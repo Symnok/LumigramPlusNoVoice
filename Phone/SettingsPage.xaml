@@ -1,0 +1,103 @@
+<phone:PhoneApplicationPage
+    x:Class="Lumigram.Phone.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:phone="clr-namespace:Microsoft.Phone.Controls;assembly=Microsoft.Phone"
+    xmlns:shell="clr-namespace:Microsoft.Phone.Shell;assembly=Microsoft.Phone"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    FontFamily="{StaticResource PhoneFontFamilyNormal}"
+    FontSize="{StaticResource PhoneFontSizeNormal}"
+    Foreground="{StaticResource PhoneForegroundBrush}"
+    SupportedOrientations="Portrait" Orientation="Portrait"
+    shell:SystemTray.IsVisible="True">
+
+    <Grid x:Name="LayoutRoot" Background="Transparent">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="12,17,0,28">
+            <TextBlock Text="Lumigram" Style="{StaticResource PhoneTextNormalStyle}"/>
+            <TextBlock Text="settings" Margin="9,-7,0,0"
+                       Style="{StaticResource PhoneTextTitle1Style}"/>
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1" Margin="12,0,12,12">
+            <StackPanel>
+
+                <TextBlock Text="account" Style="{StaticResource PhoneTextSubtleStyle}"/>
+                <TextBlock x:Name="AccountText" TextWrapping="Wrap" Margin="0,0,0,6"
+                           Style="{StaticResource PhoneTextNormalStyle}"/>
+                <TextBlock x:Name="ConnectionText" TextWrapping="Wrap" Opacity="0.6"
+                           Margin="0,0,0,18" Style="{StaticResource PhoneTextSmallStyle}"/>
+
+                <Button x:Name="SignOutButton" Content="sign out" Click="SignOut_Click"/>
+                <TextBlock TextWrapping="Wrap" Opacity="0.6" Margin="12,0,0,18"
+                           Style="{StaticResource PhoneTextSmallStyle}"
+                           Text="Ends this session on Telegram's servers and deletes the key stored on this phone. You will need the login code again to sign back in."/>
+
+                <TextBlock Text="app" Style="{StaticResource PhoneTextSubtleStyle}" Margin="0,12,0,0"/>
+
+                <Button x:Name="ExitButton" Content="exit" Click="Exit_Click"/>
+                <TextBlock TextWrapping="Wrap" Opacity="0.6" Margin="12,0,0,18"
+                           Style="{StaticResource PhoneTextSmallStyle}"
+                           Text="Closes the connection and unloads the app from memory. You stay signed in."/>
+
+                <TextBlock Text="notifications" Style="{StaticResource PhoneTextSubtleStyle}"
+                           Margin="0,12,0,0"/>
+
+                <CheckBox x:Name="NotificationsBox" Content="notifications"
+                          Checked="Notifications_Changed" Unchecked="Notifications_Changed"/>
+                <CheckBox x:Name="SoundBox" Content="notification sound"
+                          Checked="Sound_Changed" Unchecked="Sound_Changed"/>
+                <TextBlock TextWrapping="Wrap" Opacity="0.6" Margin="12,0,0,18"
+                           Style="{StaticResource PhoneTextSmallStyle}"
+                           Text="Applies to one-to-one chats. Groups and channels never notify. A chat you are reading does not notify."/>
+
+                <TextBlock Text="background" Style="{StaticResource PhoneTextSubtleStyle}"
+                           Margin="0,12,0,0"/>
+
+                <RadioButton x:Name="BgDisabled" GroupName="bg" Content="disabled"
+                             Checked="Background_Changed"/>
+                <RadioButton x:Name="BgPeriodic" GroupName="bg" Content="wake up every 30 minutes"
+                             Checked="Background_Changed"/>
+                <RadioButton x:Name="BgAlwaysOn" GroupName="bg" Content="always on (uses location)"
+                             Checked="Background_Changed"/>
+                <TextBlock x:Name="BackgroundHint" TextWrapping="Wrap" Opacity="0.6"
+                           Margin="12,0,0,6" Style="{StaticResource PhoneTextSmallStyle}"/>
+                <TextBlock x:Name="BackgroundStatus" TextWrapping="Wrap" Margin="12,0,0,6"
+                           Foreground="{StaticResource PhoneAccentBrush}"
+                           Style="{StaticResource PhoneTextSmallStyle}"/>
+
+                <Button x:Name="TestToastButton" Content="test notification"
+                        Click="TestToast_Click" Margin="0,0,0,0"/>
+                <TextBlock x:Name="TestToastHint" TextWrapping="Wrap" Opacity="0.6"
+                           Margin="12,0,0,18" Style="{StaticResource PhoneTextSmallStyle}"
+                           Text="Raises a toast after 8 seconds. Press Start as soon as you tap it - Windows Phone never shows an app its own toast while it is on screen."/>
+
+                <TextBlock Text="storage" Style="{StaticResource PhoneTextSubtleStyle}" Margin="0,12,0,0"/>
+                <TextBlock x:Name="StorageText" TextWrapping="Wrap" Margin="0,0,0,18"
+                           Foreground="{StaticResource PhoneForegroundBrush}"
+                           Style="{StaticResource PhoneTextSmallStyle}"/>
+
+                <TextBlock Text="about" Style="{StaticResource PhoneTextSubtleStyle}" Margin="0,12,0,0"/>
+                <TextBlock x:Name="DiagText" TextWrapping="Wrap" Opacity="0.6"
+                           Margin="0,0,0,12"
+                           Style="{StaticResource PhoneTextSmallStyle}"/>
+                <TextBlock x:Name="AboutText" TextWrapping="Wrap" Opacity="0.6"
+                           Style="{StaticResource PhoneTextSmallStyle}"/>
+
+                <StackPanel x:Name="BusyPanel" Visibility="Collapsed" Margin="0,18,0,0">
+                    <ProgressBar IsIndeterminate="True"/>
+                    <TextBlock x:Name="BusyText" TextWrapping="Wrap"
+                               Style="{StaticResource PhoneTextSmallStyle}"/>
+                </StackPanel>
+
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+
+</phone:PhoneApplicationPage>

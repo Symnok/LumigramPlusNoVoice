@@ -1,0 +1,15 @@
+# Telegram API credentials - never commit these.
+# Copy Secrets.cs.template to Secrets.cs and fill in your own values.
+Secrets.cs
+
+# Build output
+[Bb]in/
+[Oo]bj/
+*.xap
+*.appx
+
+# Visual Studio per-user state
+.vs/
+*.user
+*.suo
+session.dat
