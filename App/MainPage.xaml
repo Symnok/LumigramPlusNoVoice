@@ -26,8 +26,10 @@
             <Button x:Name="SignInButton" Content="sign in with a QR code"
                     Click="SignIn_Click" HorizontalAlignment="Stretch"
                     Visibility="Collapsed"/>
-            <Button x:Name="SignOutButton" Content="sign out" Click="SignOut_Click"
+            <Button x:Name="ChatsButton" Content="open chats" Click="Chats_Click"
                     HorizontalAlignment="Stretch" Visibility="Collapsed"/>
+            <Button x:Name="SignOutButton" Content="sign out" Click="SignOut_Click"
+                    HorizontalAlignment="Stretch" Visibility="Collapsed" Margin="0,8,0,0"/>
 
             <Button x:Name="CoreButton" Content="test the connection"
                     Click="Core_Click" HorizontalAlignment="Stretch" Margin="0,8,0,0"/>

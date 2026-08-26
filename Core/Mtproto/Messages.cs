@@ -41,6 +41,15 @@ namespace Lumigram.Mtproto
         public string Kind;          // user / chat / channel
         public string Title;
         public int TopMessageId;
+
+        /// <summary>
+        /// The newest message already read in this chat.
+        ///
+        /// Anything above it is unread. Kept so a conversation can open where the
+        /// reading stopped rather than at the newest message, which is the
+        /// difference between resuming and having to scroll back.
+        /// </summary>
+        public int ReadInboxMaxId;
         public int UnreadCount;
         public string LastText;
 
@@ -651,6 +660,7 @@ namespace Lumigram.Mtproto
                     PhotoId = photoId,
                     PhotoDcId = photoDc,
                     TopMessageDate = lastDate.ContainsKey(key) ? lastDate[key] : 0,
+                    ReadInboxMaxId = d.IntOr("read_inbox_max_id", 0),
                     Archived = folderId != 0,
                     IsBot = bots.Contains(PeerId(peer)),
                     IsContact = contacts.Contains(PeerId(peer)),

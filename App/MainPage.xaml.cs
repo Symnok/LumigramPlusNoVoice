@@ -54,6 +54,7 @@ namespace LumigramPlus.App
 
             SignInButton.Visibility = signedIn ? Visibility.Collapsed : Visibility.Visible;
             SignOutButton.Visibility = signedIn ? Visibility.Visible : Visibility.Collapsed;
+            ChatsButton.Visibility = signedIn ? Visibility.Visible : Visibility.Collapsed;
         }
 
         /// <summary>
@@ -78,6 +79,11 @@ namespace LumigramPlus.App
         {
             base.OnNavigatedTo(e);
             ShowSession();
+        }
+
+        private void Chats_Click(object sender, RoutedEventArgs e)
+        {
+            Frame.Navigate(typeof(ChatsPage));
         }
 
         private void SignIn_Click(object sender, RoutedEventArgs e)
