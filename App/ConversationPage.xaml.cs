@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Threading.Tasks;
 using Windows.UI;
 using Windows.UI.ViewManagement;
 using Windows.UI.Xaml;
@@ -70,6 +71,23 @@ namespace LumigramPlus.App
             get { return string.IsNullOrEmpty(Text) ? Visibility.Collapsed : Visibility.Visible; }
         }
 
+        /// <summary>
+        /// Whether the gallery is a sensible destination for this attachment.
+        ///
+        /// Pictures and videos have a place there; a document does not, and offering
+        /// to put one in the gallery is offering something that cannot work.
+        /// </summary>
+        public Visibility GalleryVisibility
+        {
+            get
+            {
+                bool media = Media != null &&
+                             (Media.Kind == MediaKind.Photo || Media.Kind == MediaKind.Video);
+
+                return media ? Visibility.Visible : Visibility.Collapsed;
+            }
+        }
+
         /// <summary>Guards against a second fetch while one is already running.</summary>
         public bool Loading { get; set; }
 
@@ -124,7 +142,7 @@ namespace LumigramPlus.App
     /// is a piece of work in its own right and not a reason to withhold a
     /// conversation that can be read and replied to.
     /// </summary>
-    public sealed partial class ConversationPage : Page
+    public sealed partial class ConversationPage : Page, IFileContinuation
     {
         /// <summary>How much history to fetch. A screenful several times over.</summary>
         private const int HistoryCount = 30;
@@ -397,13 +415,10 @@ namespace LumigramPlus.App
 
             if (m.Media != null)
             {
-                // Not downloaded on sight. A conversation can hold dozens of
-                // pictures and this is a phone on a phone network - fetching them
-                // all to scroll past them is exactly the behaviour that makes an app
-                // expensive to use.
-                item.MediaNote = m.Media.Kind == MediaKind.Photo
-                    ? m.Media.Describe() + " - tap to load"
-                    : m.Media.Describe();
+                // Photos are cheap enough to fetch on sight when the setting allows
+                // it. Everything else waits to be asked for: a document can be any
+                // size at all, and this is a phone on a phone network.
+                item.MediaNote = m.Media.Describe() + " - tap to load";
             }
 
             _messages.Add(item);
@@ -412,7 +427,7 @@ namespace LumigramPlus.App
             // fetched now or on tap, depending on the setting.
             if (m.Media != null && m.Media.Kind == MediaKind.Photo)
             {
-                if (AppSettings.AutoLoadPhotos) LoadPicture(item);
+                if (AppSettings.AutoLoadPhotos) LoadMedia(item);
                 else ShowIfCached(item);
             }
         }
@@ -441,7 +456,7 @@ namespace LumigramPlus.App
         /// connection a photo is tens of seconds, and a message that says nothing
         /// for that long reads as broken.
         /// </summary>
-        private async void LoadPicture(MessageItem item)
+        private async void LoadMedia(MessageItem item)
         {
             if (item.Media == null || item.Picture != null) return;
             if (item.Loading) return;
@@ -469,7 +484,18 @@ namespace LumigramPlus.App
                     return;
                 }
 
-                item.Picture = new Windows.UI.Xaml.Media.Imaging.BitmapImage(uri);
+                if (item.Media.Kind == MediaKind.Photo)
+                {
+                    item.Picture = new Windows.UI.Xaml.Media.Imaging.BitmapImage(uri);
+                    return;
+                }
+
+                // Nothing to draw for a document, so say it is here and what can be
+                // done with it - otherwise a finished download looks like nothing
+                // happened.
+                item.MediaNote = item.Media.Kind == MediaKind.Video
+                    ? item.Media.Describe() + " - tap to play"
+                    : item.Media.Describe() + " - hold to save";
             }
             catch (Exception ex)
             {
@@ -493,7 +519,17 @@ namespace LumigramPlus.App
         {
             if (item == null || item.Media == null) return;
 
-            string caption = item.MediaNote;
+            bool photo = item.Media.Kind == MediaKind.Photo;
+            bool video = item.Media.Kind == MediaKind.Video;
+
+            if (!photo && !video)
+            {
+                // Should not be reachable - the menu entry is hidden for documents -
+                // but a guess about where a file belongs is worth refusing rather
+                // than acting on.
+                item.MediaNote = "use save as... for this file";
+                return;
+            }
 
             try
             {
@@ -507,9 +543,13 @@ namespace LumigramPlus.App
 
                 item.MediaNote = "saving...";
 
-                string name = "lumigram-" + item.Media.Id.ToString("x16") + ".jpg";
+                // Each library takes its own kind. A video written into the pictures
+                // library is accepted and then shown by nothing.
+                Windows.Storage.StorageFolder target = photo
+                    ? Windows.Storage.KnownFolders.SavedPictures
+                    : Windows.Storage.KnownFolders.VideosLibrary;
 
-                await file.CopyAsync(Windows.Storage.KnownFolders.SavedPictures, name,
+                await file.CopyAsync(target, "lumigram-" + file.Name,
                                      Windows.Storage.NameCollisionOption.ReplaceExisting);
 
                 item.MediaNote = "saved to the gallery";
@@ -569,7 +609,30 @@ namespace LumigramPlus.App
             var item = element.DataContext as MessageItem;
             if (item == null || item.Media == null) return;
 
-            if (item.Media.Kind == MediaKind.Photo) LoadPicture(item);
+            PlayOrLoad(item);
+        }
+
+        /// <summary>
+        /// Plays a video that is already here, or fetches whatever is not.
+        ///
+        /// One tap does the obvious thing at each stage: the first fetches, and the
+        /// next plays. Two gestures for the two halves of one action would be
+        /// something to learn rather than something to use.
+        /// </summary>
+        private async void PlayOrLoad(MessageItem item)
+        {
+            if (item.Media != null && item.Media.Kind == MediaKind.Video)
+            {
+                Windows.Storage.StorageFile file = await MediaCache.FindAsync(item.Media);
+
+                if (file != null)
+                {
+                    Frame.Navigate(typeof(VideoPage), file.Name);
+                    return;
+                }
+            }
+
+            LoadMedia(item);
         }
 
         private string SenderFor(TextMessage m)
@@ -594,6 +657,191 @@ namespace LumigramPlus.App
         private void Send_Click(object sender, RoutedEventArgs e)
         {
             Send();
+        }
+
+        /// <summary>
+        /// Offers any file to send.
+        ///
+        /// Every type, not only pictures: sending arbitrary files is one of the two
+        /// reasons this client exists. The picker suspends the app, so the answer
+        /// arrives in FilePicked rather than here.
+        /// </summary>
+        private void Attach_Click(object sender, RoutedEventArgs e)
+        {
+            var picker = new Windows.Storage.Pickers.FileOpenPicker();
+            picker.ViewMode = Windows.Storage.Pickers.PickerViewMode.List;
+            picker.SuggestedStartLocation =
+                Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary;
+
+            // The picker refuses to open with no filter at all; * is how "anything"
+            // is spelled.
+            picker.FileTypeFilter.Add("*");
+
+            picker.PickSingleFileAndContinue();
+        }
+
+        /// <summary>The chosen file comes back here, after the app has been reactivated.</summary>
+        public async void FilePicked(Windows.ApplicationModel.Activation.FileOpenPickerContinuationEventArgs args)
+        {
+            if (args == null || args.Files == null || args.Files.Count == 0) return;
+
+            Windows.Storage.StorageFile file = args.Files[0];
+            await SendFileAsync(file);
+        }
+
+        /// <summary>
+        /// Uploads a file and sends it.
+        ///
+        /// Sent as a photo when it is one and as a document otherwise - the
+        /// difference is what other clients show inline versus offer as a download,
+        /// and getting it wrong makes a picture arrive as an attachment nobody can
+        /// see without saving it first.
+        /// </summary>
+        private async Task SendFileAsync(Windows.Storage.StorageFile file)
+        {
+            var pending = new MessageItem
+            {
+                Id = 0,
+                Text = "",
+                Time = DateTime.Now.ToString("HH:mm"),
+                Out = true,
+                MediaNote = "sending " + file.Name + "...",
+            };
+
+            _messages.Add(pending);
+            ScrollToEnd();
+
+            try
+            {
+                MtprotoClient client = await TelegramService.ConnectAsync();
+
+                Windows.Storage.Streams.IBuffer read =
+                    await Windows.Storage.FileIO.ReadBufferAsync(file);
+
+                byte[] bytes;
+                Windows.Security.Cryptography.CryptographicBuffer.CopyToByteArray(read, out bytes);
+
+                using (var stream = new System.IO.MemoryStream(bytes))
+                {
+                    UploadedFile uploaded = await Upload.SendFileAsync(
+                        client, TelegramService.Crypto, file.Name, stream.Length,
+                        delegate (byte[] buffer) { return stream.Read(buffer, 0, buffer.Length); },
+                        delegate (long done, long total)
+                        {
+                            if (total <= 0) return;
+
+                            var ignored = Dispatcher.RunAsync(
+                                Windows.UI.Core.CoreDispatcherPriority.Low,
+                                delegate
+                                {
+                                    pending.MediaNote = "sending " + (done * 100 / total) + "%";
+                                });
+                        },
+                        TelegramService.Info);
+
+                    string type = file.ContentType ?? "";
+
+                    if (type.StartsWith("image/"))
+                    {
+                        await Upload.SendPhotoAsync(client, TelegramService.Crypto,
+                                                    _inputPeer, uploaded, "", TelegramService.Info);
+                    }
+                    else if (type.StartsWith("video/"))
+                    {
+                        // Size and duration are what make a video arrive as one.
+                        // Sent as a plain document it is offered as a file to
+                        // download rather than something to play, on every client.
+                        Windows.Storage.FileProperties.VideoProperties video =
+                            await file.Properties.GetVideoPropertiesAsync();
+
+                        await Upload.SendVideoAsync(
+                            client, TelegramService.Crypto, _inputPeer, uploaded, "",
+                            type, (int)video.Duration.TotalSeconds,
+                            (int)video.Width, (int)video.Height, TelegramService.Info);
+                    }
+                    else
+                    {
+                        await Upload.SendDocumentAsync(client, TelegramService.Crypto,
+                                                       _inputPeer, uploaded, "",
+                                                       type.Length > 0 ? type : "application/octet-stream",
+                                                       TelegramService.Info);
+                    }
+                }
+
+                pending.MediaNote = "sent " + file.Name;
+                Refresh();
+            }
+            catch (Exception ex)
+            {
+                var rpc = ex as RpcException;
+                pending.MediaNote = "not sent: " + (rpc != null ? rpc.ErrorType : ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Offers to save any attachment wherever the user likes.
+        ///
+        /// The gallery is right for a picture and useless for anything else, so this
+        /// is the answer for documents - and it is the other half of what WinRT was
+        /// ported for.
+        /// </summary>
+        private async void SaveAsMenu_Click(object sender, RoutedEventArgs e)
+        {
+            var element = sender as FrameworkElement;
+            if (element == null) return;
+
+            var item = element.DataContext as MessageItem;
+            if (item == null || item.Media == null) return;
+
+            Windows.Storage.StorageFile cached = await MediaCache.FindAsync(item.Media);
+            if (cached == null)
+            {
+                item.MediaNote = "load it first, then save";
+                return;
+            }
+
+            _saving = item;
+
+            var picker = new Windows.Storage.Pickers.FileSavePicker();
+
+            string name = item.Media.FileName;
+            if (string.IsNullOrEmpty(name)) name = cached.Name;
+
+            picker.SuggestedFileName = name;
+            picker.DefaultFileExtension = System.IO.Path.GetExtension(cached.Name);
+
+            picker.FileTypeChoices.Add("file",
+                new List<string> { System.IO.Path.GetExtension(cached.Name) });
+
+            picker.PickSaveFileAndContinue();
+        }
+
+        private MessageItem _saving;
+
+        /// <summary>The chosen destination comes back here.</summary>
+        public async void SaveLocationPicked(Windows.ApplicationModel.Activation.FileSavePickerContinuationEventArgs args)
+        {
+            MessageItem item = _saving;
+            _saving = null;
+
+            if (args == null || args.File == null || item == null) return;
+
+            try
+            {
+                Windows.Storage.StorageFile cached = await MediaCache.FindAsync(item.Media);
+                if (cached == null) return;
+
+                Windows.Storage.Streams.IBuffer read =
+                    await Windows.Storage.FileIO.ReadBufferAsync(cached);
+
+                await Windows.Storage.FileIO.WriteBufferAsync(args.File, read);
+
+                item.MediaNote = "saved as " + args.File.Name;
+            }
+            catch (Exception ex)
+            {
+                item.MediaNote = "not saved: " + ex.Message;
+            }
         }
 
         private void Refresh_Click(object sender, RoutedEventArgs e)

@@ -426,7 +426,10 @@ namespace LumigramPlus.App
 
         private void Continue_Click(object sender, RoutedEventArgs e)
         {
-            Frame.Navigate(typeof(MainPage));
+            Frame.Navigate(typeof(ChatsPage));
+
+            // Signing in is not somewhere to come back to.
+            Frame.BackStack.Clear();
         }
 
         /// <summary>

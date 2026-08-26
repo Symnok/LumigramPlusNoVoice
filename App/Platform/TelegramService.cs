@@ -44,7 +44,11 @@ namespace LumigramPlus.App
                 ClientInfo info = ClientInfo.Default;
                 info.ApiId = Secrets.ApiId;
                 info.ApiHash = Secrets.ApiHash;
-                info.DeviceModel = "Windows Phone";
+                // Distinct from the Silverlight client on purpose. Both share an
+                // api_id, so Telegram lists both under the same registered app name
+                // - this is the only field that says which of the two a session
+                // actually came from.
+                info.DeviceModel = "Windows Phone (Lumigram+)";
                 info.SystemVersion = "8.1";
                 info.AppVersion = "Lumigram+";
                 return info;
@@ -138,6 +142,16 @@ namespace LumigramPlus.App
 
             if (old != null)
             {
+                // Give up the authorisation on the datacenter being left behind.
+                //
+                // Exporting a login token requires initConnection, which registers a
+                // connection attempt - so migrating leaves an authorisation on the
+                // old datacenter that will never be completed, and Telegram lists it
+                // as an unsuccessful login. Nothing else clears it: the key is not
+                // signed in, so there is no session to end from anywhere.
+                try { await Messages.LogOutAsync(old, Info); }
+                catch (Exception) { }
+
                 try { old.Dispose(); }
                 catch (Exception) { }
             }

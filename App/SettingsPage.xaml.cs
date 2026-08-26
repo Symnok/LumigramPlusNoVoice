@@ -29,6 +29,33 @@ namespace LumigramPlus.App
             _loading = true;
             AutoLoadSwitch.IsOn = AppSettings.AutoLoadPhotos;
             _loading = false;
+
+            AccountText.Text = TelegramService.Session != null
+                ? "Signed in. Authorisation stored for " + TelegramService.Session.Host + "."
+                : "Not signed in.";
+        }
+
+        private async void SignOut_Click(object sender, RoutedEventArgs e)
+        {
+            TelegramService.Disconnect();
+            TelegramService.Session = null;
+
+            await SessionStore.DeleteAsync();
+
+            Frame.Navigate(typeof(QrLoginPage));
+            Frame.BackStack.Clear();
+        }
+
+        /// <summary>
+        /// Closes the app rather than leaving it suspended.
+        ///
+        /// Worth having on a phone with an authorisation key in memory: suspending
+        /// keeps the process and everything in it, where this ends both.
+        /// </summary>
+        private void Exit_Click(object sender, RoutedEventArgs e)
+        {
+            TelegramService.Disconnect();
+            Application.Current.Exit();
         }
 
         private void AutoLoad_Toggled(object sender, RoutedEventArgs e)

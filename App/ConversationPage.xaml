@@ -35,9 +35,25 @@
             </ListView.ItemContainerStyle>
             <ListView.ItemTemplate>
                     <DataTemplate>
+                        <!--
+                          The menu hangs off the whole bubble rather than off the
+                          picture. Attached to the picture it existed only for
+                          photos, which left every document with no way to reach
+                          "save as" at all.
+                        -->
                         <Border Margin="{Binding Margin}" CornerRadius="6" Padding="10,6,10,6"
                                 Background="{Binding Background}"
-                                HorizontalAlignment="{Binding Align}">
+                                HorizontalAlignment="{Binding Align}"
+                                Holding="Media_Holding">
+                            <FlyoutBase.AttachedFlyout>
+                                <MenuFlyout>
+                                    <MenuFlyoutItem Text="save to gallery"
+                                                    Visibility="{Binding GalleryVisibility}"
+                                                    Click="SaveMenu_Click"/>
+                                    <MenuFlyoutItem Text="save as..."
+                                                    Click="SaveAsMenu_Click"/>
+                                </MenuFlyout>
+                            </FlyoutBase.AttachedFlyout>
                             <StackPanel>
                                 <!-- Where the reading stopped last time. -->
                                 <Border Visibility="{Binding UnreadMarkVisibility}"
@@ -60,17 +76,8 @@
                                        Visibility="{Binding PictureVisibility}"
                                        MaxWidth="260" MaxHeight="260"
                                        Stretch="Uniform" Margin="0,0,0,4"
-                                       Tapped="Media_Tap" Holding="Media_Holding"
-                                       DoubleTapped="Media_DoubleTap">
-                                    <!-- Press and hold to save, which is where a
-                                         phone user looks for it. -->
-                                    <FlyoutBase.AttachedFlyout>
-                                        <MenuFlyout>
-                                            <MenuFlyoutItem Text="save to gallery"
-                                                            Click="SaveMenu_Click"/>
-                                        </MenuFlyout>
-                                    </FlyoutBase.AttachedFlyout>
-                                </Image>
+                                       Tapped="Media_Tap"
+                                       DoubleTapped="Media_DoubleTap"/>
                                 <TextBlock Text="{Binding Text}" TextWrapping="Wrap"
                                            Visibility="{Binding TextVisibility}"/>
                                 <TextBlock Text="{Binding Time}" FontSize="11" Opacity="0.5"
@@ -95,6 +102,8 @@
     -->
     <Page.BottomAppBar>
         <CommandBar>
+            <AppBarButton x:Name="AttachButton" Icon="Attach" Label="attach"
+                          Click="Attach_Click"/>
             <AppBarButton x:Name="SendButton" Icon="Send" Label="send" Click="Send_Click"/>
             <AppBarButton Icon="Refresh" Label="refresh" Click="Refresh_Click"/>
         </CommandBar>

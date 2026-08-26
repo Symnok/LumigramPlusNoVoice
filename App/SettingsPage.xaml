@@ -21,6 +21,16 @@
                           Toggled="AutoLoad_Toggled"/>
             <TextBlock Text="Off means photos are fetched only when tapped, which is worth having on a metered connection."
                        TextWrapping="Wrap" Opacity="0.7" FontSize="13" Margin="0,4,0,0"/>
+
+            <TextBlock x:Name="AccountText" Text="" TextWrapping="Wrap" Opacity="0.7"
+                       FontSize="13" Margin="0,28,0,4"/>
+
+            <Button Content="sign out" Click="SignOut_Click"
+                    HorizontalAlignment="Stretch"/>
+            <TextBlock Text="Forgets the authorisation on this phone. The session stays listed under Devices in Telegram until removed there."
+                       TextWrapping="Wrap" Opacity="0.55" FontSize="12" Margin="0,4,0,12"/>
+
+            <Button Content="exit" Click="Exit_Click" HorizontalAlignment="Stretch"/>
         </StackPanel>
     </Grid>
 </Page>

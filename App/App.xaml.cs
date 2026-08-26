@@ -36,37 +36,75 @@ namespace LumigramPlus.App
             frame.GoBack();
         }
 
-        protected override void OnLaunched(LaunchActivatedEventArgs e)
+        /// <summary>
+        /// Where a file picker comes back to.
+        ///
+        /// The picker does not return a value - it suspends the app and activates it
+        /// again with the answer, so this is the only path by which a chosen file
+        /// arrives. The page that asked may have been rebuilt in the meantime, which
+        /// is why the current one is asked rather than a remembered reference.
+        /// </summary>
+        protected override void OnActivated(IActivatedEventArgs args)
         {
             var frame = Window.Current.Content as Frame;
+
             if (frame == null)
             {
                 frame = new Frame();
                 Window.Current.Content = frame;
             }
 
-            if (frame.Content == null) frame.Navigate(typeof(MainPage), e.Arguments);
+            var target = frame.Content as IFileContinuation;
+
+            if (args.Kind == ActivationKind.PickFileContinuation && target != null)
+            {
+                target.FilePicked((FileOpenPickerContinuationEventArgs)args);
+            }
+            else if (args.Kind == ActivationKind.PickSaveFileContinuation && target != null)
+            {
+                target.SaveLocationPicked((FileSavePickerContinuationEventArgs)args);
+            }
+
             Window.Current.Activate();
-
-            // Straight to the chats when there is already an authorisation. Landing
-            // on a menu every launch is a thing to get past, not a thing to look at.
-            var ignored = OpenChatsIfSignedInAsync(frame);
         }
 
-        private static async System.Threading.Tasks.Task OpenChatsIfSignedInAsync(Frame frame)
+        /// <summary>
+        /// Opens the app where the user can actually do something.
+        ///
+        /// Straight to the chats when there is an authorisation, straight to sign-in
+        /// when there is not. There used to be a menu in between; a screen whose only
+        /// purpose is to be got past is not worth the tap.
+        /// </summary>
+        protected override async void OnLaunched(LaunchActivatedEventArgs e)
         {
-            try
-            {
-                SessionStore session = await SessionStore.LoadAsync();
-                if (session == null || !session.SignedIn) return;
+            var frame = Window.Current.Content as Frame;
 
-                TelegramService.Session = session;
-                frame.Navigate(typeof(ChatsPage));
-            }
-            catch (Exception)
+            if (frame == null)
             {
-                // Whatever went wrong, the menu is still there behind this.
+                frame = new Frame();
+                Window.Current.Content = frame;
             }
+
+            if (frame.Content == null)
+            {
+                SessionStore session = null;
+
+                try { session = await SessionStore.LoadAsync(); }
+                catch (Exception) { }
+
+                if (session != null && session.SignedIn)
+                {
+                    TelegramService.Session = session;
+                    frame.Navigate(typeof(ChatsPage));
+                }
+                else
+                {
+                    frame.Navigate(typeof(QrLoginPage));
+                }
+            }
+
+            Window.Current.Activate();
         }
+
     }
 }
