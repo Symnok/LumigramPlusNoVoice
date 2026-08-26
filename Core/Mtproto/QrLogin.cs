@@ -91,8 +91,24 @@ namespace Lumigram.Mtproto
              .WriteConstructor(TlConstructors.Vector)
              .WriteInt(0);                         // except_ids: none
 
-            TlReader r = await client.InvokeAsync(q.ToArray(), info);
-            return Interpret(r);
+            try
+            {
+                TlReader r = await client.InvokeAsync(q.ToArray(), info);
+                return Interpret(r);
+            }
+            catch (RpcException ex)
+            {
+                // Two-step verification is reported as an error rather than as one
+                // of the auth.LoginToken results, so without this the status exists
+                // in the enum and can never be returned - and every caller has to
+                // remember the same catch. Getting it wrong is expensive: the token
+                // has already been accepted at this point, so treating it as a
+                // failure abandons a login that had all but succeeded.
+                if ((ex.ErrorType ?? "").Contains("SESSION_PASSWORD_NEEDED"))
+                    return new QrLoginStep { Status = QrLoginStatus.PasswordNeeded };
+
+                throw;
+            }
         }
 
         /// <summary>
@@ -103,6 +119,13 @@ namespace Lumigram.Mtproto
         public static async Task<QrLoginStep> ImportTokenAsync(MtprotoClient client, byte[] token,
                                                                ClientInfo info = null)
         {
+            // Only steps that carry a token can be imported. Without this the
+            // failure is a null reference from inside a TlWriter, which says nothing
+            // about the caller having polled with a result that had already finished
+            // the login.
+            if (token == null)
+                throw new ArgumentNullException("token", "this login step has no token to import");
+
             var q = new TlWriter(token.Length + 16);
             q.WriteConstructor(TlConstructors.AuthImportLoginToken)
              .WriteBytes(token);

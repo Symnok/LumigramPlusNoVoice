@@ -89,5 +89,26 @@ namespace Lumigram.Mtproto
         public const string TestDc2Host = "149.154.167.40";
         public const string ProductionDc2Host = "149.154.167.51";
         public const int DefaultPort = 443;
+
+        /// <summary>
+        /// The address of a datacenter by its id.
+        ///
+        /// Needed whenever the server says an account lives somewhere else - a QR
+        /// login token that migrates, or a FILE_MIGRATE on a download. Hard-coded
+        /// because a client has to be able to reach a datacenter before it can ask
+        /// anything, including where the datacenters are.
+        /// </summary>
+        public static string HostFor(int dcId)
+        {
+            switch (dcId)
+            {
+                case 1: return "149.154.175.50";
+                case 2: return "149.154.167.51";
+                case 3: return "149.154.175.100";
+                case 4: return "149.154.167.91";
+                case 5: return "149.154.171.5";
+                default: return ProductionDc2Host;
+            }
+        }
     }
 }

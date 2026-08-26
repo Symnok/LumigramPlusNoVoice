@@ -1,4 +1,6 @@
 using System;
+using System.Threading.Tasks;
+using Lumigram.Tl;
 using Lumigram.Crypto;
 
 namespace Lumigram.Mtproto
@@ -34,6 +36,68 @@ namespace Lumigram.Mtproto
     {
         private const int Pbkdf2Iterations = 100000;
         private const int PadSize = 256;
+
+        /// <summary>
+        /// Signs in with a two-step verification password.
+        ///
+        /// Three parts, all of which have to happen together: ask the server for the
+        /// current parameters, prove knowledge of the password against them, and
+        /// send the proof. The parameters include a per-attempt value from the
+        /// server, so they cannot be cached and reused - a proof computed against
+        /// stale parameters is simply rejected.
+        ///
+        /// The password itself never leaves the device; what goes out is a proof
+        /// derived from it. Expect this to take several seconds on phone hardware -
+        /// the derivation is 100,000 rounds of PBKDF2 followed by a 2048-bit
+        /// exponentiation, and that cost is the point of it.
+        ///
+        /// Lives here rather than in a page because it is protocol, and because
+        /// having it in one place is what stops a second caller getting the order
+        /// subtly wrong.
+        /// </summary>
+        public static async Task CheckPasswordAsync(MtprotoClient client, ICrypto crypto,
+                                                    string password, ClientInfo info = null)
+        {
+            var q = new TlWriter(16);
+            q.WriteConstructor(TlConstructors.AccountGetPassword);
+
+            TlReader r = await client.InvokeAsync(q.ToArray(), info);
+            r.Expect(TlConstructors.AccountPassword, "account.password");
+
+            int flags = r.ReadInt();
+            if ((flags & 4) == 0)
+                throw new MtprotoException("this account has no password set");
+
+            uint algo = r.ReadConstructor();
+            if (algo != TlConstructors.PasswordKdfAlgoSha256Pbkdf2)
+                throw new MtprotoException("unsupported password method");
+
+            byte[] salt1 = r.ReadBytes();
+            byte[] salt2 = r.ReadBytes();
+            int g = r.ReadInt();
+            byte[] p = r.ReadBytes();
+            byte[] srpB = r.ReadBytes();
+            long srpId = r.ReadLong();
+
+            // Off the calling thread. This is ten to fifteen seconds of solid
+            // arithmetic on phone hardware - 100,000 rounds of PBKDF2 and a
+            // 2048-bit exponentiation - and doing it inline freezes whatever UI
+            // called it for the whole time, which looks exactly like a crash.
+            SrpProof proof = await Task.Run(delegate
+            {
+                return ComputeProof(crypto, password, salt1, salt2, g, p, srpB);
+            });
+
+            var check = new TlWriter(600);
+            check.WriteConstructor(TlConstructors.AuthCheckPassword)
+                 .WriteConstructor(TlConstructors.InputCheckPasswordSrp)
+                 .WriteLong(srpId)
+                 .WriteBytes(proof.A)
+                 .WriteBytes(proof.M1);
+
+            TlReader result = await client.InvokeAsync(check.ToArray(), info);
+            result.Expect(TlConstructors.AuthAuthorization, "auth.authorization");
+        }
 
         public static SrpProof ComputeProof(ICrypto crypto, string password,
                                             byte[] salt1, byte[] salt2, int g, byte[] pBytes,
