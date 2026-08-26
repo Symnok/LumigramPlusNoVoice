@@ -12,13 +12,66 @@ using Lumigram.Mtproto;
 namespace LumigramPlus.App
 {
     /// <summary>One message in a conversation.</summary>
-    public sealed class MessageItem
+    public sealed class MessageItem : System.ComponentModel.INotifyPropertyChanged
     {
+        public event System.ComponentModel.PropertyChangedEventHandler PropertyChanged;
+
+        private void Raise(string name)
+        {
+            var handler = PropertyChanged;
+            if (handler != null)
+                handler(this, new System.ComponentModel.PropertyChangedEventArgs(name));
+        }
+
         public int Id { get; set; }
         public string Text { get; set; }
         public string Time { get; set; }
         public bool Out { get; set; }
         public string SenderName { get; set; }
+
+        /// <summary>The attachment, when there is one.</summary>
+        public MediaInfo Media { get; set; }
+
+        private string _mediaNote;
+        public string MediaNote
+        {
+            get { return _mediaNote; }
+            set { _mediaNote = value; Raise("MediaNote"); Raise("MediaNoteVisibility"); }
+        }
+
+        private ImageSource _picture;
+        public ImageSource Picture
+        {
+            get { return _picture; }
+            set { _picture = value; Raise("Picture"); Raise("PictureVisibility"); Raise("MediaNoteVisibility"); }
+        }
+
+        public Visibility PictureVisibility
+        {
+            get { return _picture == null ? Visibility.Collapsed : Visibility.Visible; }
+        }
+
+        /// <summary>
+        /// The caption describing an attachment, shown only while there is no
+        /// picture to show instead.
+        /// </summary>
+        public Visibility MediaNoteVisibility
+        {
+            get
+            {
+                return _picture == null && !string.IsNullOrEmpty(_mediaNote)
+                    ? Visibility.Visible : Visibility.Collapsed;
+            }
+        }
+
+        /// <summary>Hidden when a message is only an attachment.</summary>
+        public Visibility TextVisibility
+        {
+            get { return string.IsNullOrEmpty(Text) ? Visibility.Collapsed : Visibility.Visible; }
+        }
+
+        /// <summary>Guards against a second fetch while one is already running.</summary>
+        public bool Loading { get; set; }
 
         /// <summary>True for the oldest message that had not been read.</summary>
         public bool FirstUnread { get; set; }
@@ -332,22 +385,191 @@ namespace LumigramPlus.App
 
         private void Add(TextMessage m)
         {
-            string text = m.Text ?? "";
-
-            // Attachments are described rather than shown. Rendering them needs the
-            // download path, and a conversation that silently omits half its
-            // messages would be worse than one that names what it cannot draw.
-            if (text.Length == 0 && m.Media != null) text = "[" + m.Media.Describe() + "]";
-            if (text.Length == 0) text = "[empty]";
-
-            _messages.Add(new MessageItem
+            var item = new MessageItem
             {
                 Id = m.Id,
-                Text = text,
+                Text = m.Text ?? "",
                 Time = m.DateUtc.ToLocalTime().ToString("HH:mm"),
                 Out = m.Out,
                 SenderName = SenderFor(m),
-            });
+                Media = m.Media,
+            };
+
+            if (m.Media != null)
+            {
+                // Not downloaded on sight. A conversation can hold dozens of
+                // pictures and this is a phone on a phone network - fetching them
+                // all to scroll past them is exactly the behaviour that makes an app
+                // expensive to use.
+                item.MediaNote = m.Media.Kind == MediaKind.Photo
+                    ? m.Media.Describe() + " - tap to load"
+                    : m.Media.Describe();
+            }
+
+            _messages.Add(item);
+
+            // Anything already fetched is shown without asking; anything else is
+            // fetched now or on tap, depending on the setting.
+            if (m.Media != null && m.Media.Kind == MediaKind.Photo)
+            {
+                if (AppSettings.AutoLoadPhotos) LoadPicture(item);
+                else ShowIfCached(item);
+            }
+        }
+
+        /// <summary>Shows a picture that is already on disk, without fetching.</summary>
+        private async void ShowIfCached(MessageItem item)
+        {
+            try
+            {
+                Windows.Storage.StorageFile file = await MediaCache.FindAsync(item.Media);
+                if (file == null) return;
+
+                item.Picture = new Windows.UI.Xaml.Media.Imaging.BitmapImage(
+                    new Uri("ms-appdata:///local/media/" + file.Name));
+            }
+            catch (Exception)
+            {
+                // Nothing to show; the caption stays.
+            }
+        }
+
+        /// <summary>
+        /// Fetches the picture behind a message and shows it.
+        ///
+        /// Progress is reported into the caption rather than a bar: on a slow
+        /// connection a photo is tens of seconds, and a message that says nothing
+        /// for that long reads as broken.
+        /// </summary>
+        private async void LoadPicture(MessageItem item)
+        {
+            if (item.Media == null || item.Picture != null) return;
+            if (item.Loading) return;
+
+            item.Loading = true;
+            string caption = item.MediaNote;
+
+            try
+            {
+                MtprotoClient client = await TelegramService.ConnectAsync();
+
+                Uri uri = await MediaCache.GetAsync(client, item.Media,
+                    delegate (long got, long total)
+                    {
+                        if (total <= 0) return;
+
+                        var ignored = Dispatcher.RunAsync(
+                            Windows.UI.Core.CoreDispatcherPriority.Low,
+                            delegate { item.MediaNote = "loading " + (got * 100 / total) + "%"; });
+                    });
+
+                if (uri == null)
+                {
+                    item.MediaNote = caption;
+                    return;
+                }
+
+                item.Picture = new Windows.UI.Xaml.Media.Imaging.BitmapImage(uri);
+            }
+            catch (Exception ex)
+            {
+                var rpc = ex as RpcException;
+                item.MediaNote = "could not load: " + (rpc != null ? rpc.ErrorType : ex.Message);
+            }
+            finally
+            {
+                item.Loading = false;
+            }
+        }
+
+        /// <summary>
+        /// Copies a picture into the phone's own gallery.
+        ///
+        /// SavedPictures rather than the app's storage: a picture kept where only
+        /// this app can see it has not really been saved. Requires the pictures
+        /// library capability, without which the folder simply is not there.
+        /// </summary>
+        private async void SavePicture(MessageItem item)
+        {
+            if (item == null || item.Media == null) return;
+
+            string caption = item.MediaNote;
+
+            try
+            {
+                Windows.Storage.StorageFile file = await MediaCache.FindAsync(item.Media);
+
+                if (file == null)
+                {
+                    item.MediaNote = "load it first, then save";
+                    return;
+                }
+
+                item.MediaNote = "saving...";
+
+                string name = "lumigram-" + item.Media.Id.ToString("x16") + ".jpg";
+
+                await file.CopyAsync(Windows.Storage.KnownFolders.SavedPictures, name,
+                                     Windows.Storage.NameCollisionOption.ReplaceExisting);
+
+                item.MediaNote = "saved to the gallery";
+            }
+            catch (Exception ex)
+            {
+                item.MediaNote = "not saved: " + ex.Message;
+            }
+        }
+
+        /// <summary>
+        /// Opens the save menu on a press and hold.
+        ///
+        /// An attached flyout does not show itself - something has to ask - and the
+        /// Started phase is the moment to do it: waiting for Completed means the
+        /// menu appears only after the finger lifts.
+        /// </summary>
+        private void Media_Holding(object sender, Windows.UI.Xaml.Input.HoldingRoutedEventArgs e)
+        {
+            if (e.HoldingState != Windows.UI.Input.HoldingState.Started) return;
+
+            var element = sender as FrameworkElement;
+            if (element == null) return;
+
+            Windows.UI.Xaml.Controls.Primitives.FlyoutBase.ShowAttachedFlyout(element);
+        }
+
+        /// <summary>Opens a downloaded picture full screen, where it can be zoomed.</summary>
+        private async void Media_DoubleTap(object sender,
+                                           Windows.UI.Xaml.Input.DoubleTappedRoutedEventArgs e)
+        {
+            var element = sender as FrameworkElement;
+            if (element == null) return;
+
+            var item = element.DataContext as MessageItem;
+            if (item == null || item.Media == null) return;
+
+            Windows.Storage.StorageFile file = await MediaCache.FindAsync(item.Media);
+            if (file == null) return;
+
+            Frame.Navigate(typeof(ImageViewerPage), file.Name);
+        }
+
+        private void SaveMenu_Click(object sender, RoutedEventArgs e)
+        {
+            var element = sender as FrameworkElement;
+            if (element == null) return;
+
+            SavePicture(element.DataContext as MessageItem);
+        }
+
+        private void Media_Tap(object sender, Windows.UI.Xaml.Input.TappedRoutedEventArgs e)
+        {
+            var element = sender as FrameworkElement;
+            if (element == null) return;
+
+            var item = element.DataContext as MessageItem;
+            if (item == null || item.Media == null) return;
+
+            if (item.Media.Kind == MediaKind.Photo) LoadPicture(item);
         }
 
         private string SenderFor(TextMessage m)

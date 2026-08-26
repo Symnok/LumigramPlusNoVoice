@@ -1,0 +1,61 @@
+using System;
+using Windows.Storage;
+
+namespace LumigramPlus.App
+{
+    /// <summary>
+    /// What the user has chosen.
+    ///
+    /// LocalSettings rather than a file: these are a handful of switches, they are
+    /// read on every message drawn, and the platform already keeps a key-value store
+    /// that is loaded before the app is. A file would mean an async read in front of
+    /// decisions that have to be made synchronously while binding.
+    ///
+    /// Every setting has a default that works without being asked about, and reading
+    /// one that has never been written returns it.
+    /// </summary>
+    public static class AppSettings
+    {
+        private const string AutoLoadPhotosKey = "autoLoadPhotos";
+
+        /// <summary>
+        /// Whether pictures are fetched as soon as they appear.
+        ///
+        /// On by default: a messenger that shows a row of "tap to load" where the
+        /// pictures should be is technically thriftier and worse to use. The switch
+        /// exists because the opposite is a legitimate preference on a metered
+        /// connection, not because the default is in doubt.
+        /// </summary>
+        public static bool AutoLoadPhotos
+        {
+            get { return Read(AutoLoadPhotosKey, true); }
+            set { Write(AutoLoadPhotosKey, value); }
+        }
+
+        private static bool Read(string key, bool fallback)
+        {
+            try
+            {
+                object stored = ApplicationData.Current.LocalSettings.Values[key];
+                return stored is bool ? (bool)stored : fallback;
+            }
+            catch (Exception)
+            {
+                return fallback;
+            }
+        }
+
+        private static void Write(string key, bool value)
+        {
+            try
+            {
+                ApplicationData.Current.LocalSettings.Values[key] = value;
+            }
+            catch (Exception)
+            {
+                // A setting that cannot be stored is not worth failing over; it
+                // simply reverts to the default next launch.
+            }
+        }
+    }
+}

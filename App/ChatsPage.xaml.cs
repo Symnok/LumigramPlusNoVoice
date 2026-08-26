@@ -241,6 +241,16 @@ namespace LumigramPlus.App
             }
         }
 
+        private void Refresh_Click(object sender, RoutedEventArgs e)
+        {
+            Refresh();
+        }
+
+        private void Settings_Click(object sender, RoutedEventArgs e)
+        {
+            Frame.Navigate(typeof(SettingsPage));
+        }
+
         private DialogItem Find(long peerId)
         {
             foreach (DialogItem item in _dialogs)

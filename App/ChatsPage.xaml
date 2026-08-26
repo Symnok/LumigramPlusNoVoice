@@ -69,4 +69,10 @@
             </ListView.ItemTemplate>
         </ListView>
     </Grid>
+    <Page.BottomAppBar>
+        <CommandBar>
+            <AppBarButton Icon="Refresh" Label="refresh" Click="Refresh_Click"/>
+            <AppBarButton Icon="Setting" Label="settings" Click="Settings_Click"/>
+        </CommandBar>
+    </Page.BottomAppBar>
 </Page>

@@ -49,7 +49,30 @@
                                 <TextBlock Text="{Binding SenderName}"
                                            Visibility="{Binding SenderVisibility}"
                                            FontSize="13" Opacity="0.8" Margin="0,0,0,2"/>
-                                <TextBlock Text="{Binding Text}" TextWrapping="Wrap"/>
+                                <!-- Tapping the caption is what fetches the picture,
+                                     so it stays tappable after one is shown too. -->
+                                <TextBlock Text="{Binding MediaNote}"
+                                           Visibility="{Binding MediaNoteVisibility}"
+                                           TextWrapping="Wrap" Opacity="0.85"
+                                           FontSize="13" Margin="0,0,0,4"
+                                           Tapped="Media_Tap"/>
+                                <Image Source="{Binding Picture}"
+                                       Visibility="{Binding PictureVisibility}"
+                                       MaxWidth="260" MaxHeight="260"
+                                       Stretch="Uniform" Margin="0,0,0,4"
+                                       Tapped="Media_Tap" Holding="Media_Holding"
+                                       DoubleTapped="Media_DoubleTap">
+                                    <!-- Press and hold to save, which is where a
+                                         phone user looks for it. -->
+                                    <FlyoutBase.AttachedFlyout>
+                                        <MenuFlyout>
+                                            <MenuFlyoutItem Text="save to gallery"
+                                                            Click="SaveMenu_Click"/>
+                                        </MenuFlyout>
+                                    </FlyoutBase.AttachedFlyout>
+                                </Image>
+                                <TextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                           Visibility="{Binding TextVisibility}"/>
                                 <TextBlock Text="{Binding Time}" FontSize="11" Opacity="0.5"
                                            HorizontalAlignment="Right" Margin="0,2,0,0"/>
                             </StackPanel>

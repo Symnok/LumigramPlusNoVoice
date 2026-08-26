@@ -130,6 +130,14 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
+    <Page Include="SettingsPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="ImageViewerPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="App.xaml.cs">
@@ -147,9 +155,17 @@
     <Compile Include="ConversationPage.xaml.cs">
       <DependentUpon>ConversationPage.xaml</DependentUpon>
     </Compile>
+    <Compile Include="SettingsPage.xaml.cs">
+      <DependentUpon>SettingsPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="ImageViewerPage.xaml.cs">
+      <DependentUpon>ImageViewerPage.xaml</DependentUpon>
+    </Compile>
     <Compile Include="Platform\SessionStore.cs" />
     <Compile Include="Platform\TelegramService.cs" />
     <Compile Include="Platform\AvatarCache.cs" />
+    <Compile Include="Platform\MediaCache.cs" />
+    <Compile Include="Platform\AppSettings.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
