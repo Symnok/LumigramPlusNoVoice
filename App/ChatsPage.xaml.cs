@@ -748,22 +748,24 @@ namespace LumigramPlus.App
         /// Opens the chat a tapped toast asked for, if one did.
         ///
         /// Only a chat already in the list can be opened - without an access hash a
-        /// peer is not addressable - so a toast for something past the first page
-        /// leaves the user on the list rather than on an error.
+        /// peer is not addressable.
         /// </summary>
-        private void OpenPending()
+        /// <returns>
+        /// False when the chat is not in the loaded list, so a caller that can
+        /// reload knows it is worth doing. True means handled, including when there
+        /// was nothing to open.
+        /// </returns>
+        internal bool OpenPending()
         {
             long peerId = Notifications.PendingPeerId;
-            if (peerId == 0) return;
-
-            // Cleared whether or not it is found, so a chat that could not be opened
-            // does not reopen itself on every later load.
-            Notifications.PendingPeerId = 0;
+            if (peerId == 0) return true;
 
             DialogItem item = Find(peerId);
-            if (item == null) return;
+            if (item == null) return false;
 
+            Notifications.PendingPeerId = 0;
             Frame.Navigate(typeof(ConversationPage), item);
+            return true;
         }
 
         private DialogItem Find(long peerId)
@@ -835,7 +837,11 @@ namespace LumigramPlus.App
 
                 FetchAvatars(client);
                 LoadFolders(client);
-                OpenPending();
+
+                // The list is as complete as it is going to get, so a chat still
+                // missing from it cannot be opened. Dropped rather than left parked,
+                // or it would reopen itself on every later load.
+                if (!OpenPending()) Notifications.PendingPeerId = 0;
                 StartPolling();
             }
             catch (RpcException ex) when (TelegramService.IsAuthGone(ex))

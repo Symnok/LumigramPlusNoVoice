@@ -131,12 +131,21 @@ namespace LumigramPlus.App
             if (tapped != 0) Notifications.PendingPeerId = tapped;
 
             // The app was already running, so nothing below would run and the tap
-            // would do nothing at all. Going to the chat list is also what makes the
-            // pending chat get picked up.
+            // would do nothing at all.
             if (frame.Content != null && tapped != 0)
             {
-                frame.Navigate(typeof(ChatsPage));
-                frame.BackStack.Clear();
+                // Asked first, because the chat is usually already in the list the
+                // app was showing when it was put away. Navigating unconditionally
+                // rebuilt the whole page - a chat list, the folders, and then the
+                // conversation - all at once on resume, which is what tripped
+                // FLOOD_WAIT on a tapped notification.
+                var chats = frame.Content as ChatsPage;
+
+                if (chats == null || !chats.OpenPending())
+                {
+                    frame.Navigate(typeof(ChatsPage));
+                    frame.BackStack.Clear();
+                }
             }
 
             if (frame.Content == null)

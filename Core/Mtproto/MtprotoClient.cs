@@ -18,6 +18,28 @@ namespace Lumigram.Mtproto
             Code = code;
             ErrorType = type;
         }
+
+        /// <summary>
+        /// How long the server wants us to wait, or 0 if it did not say.
+        ///
+        /// FLOOD_WAIT_N is not a refusal - it is the server saying "not yet, try
+        /// in N seconds". Treating it as an error surfaces a number the user can
+        /// do nothing with, when the right response is to wait that long.
+        /// </summary>
+        public int FloodWaitSeconds
+        {
+            get
+            {
+                const string prefix = "FLOOD_WAIT_";
+
+                if (ErrorType == null) return 0;
+                if (!ErrorType.StartsWith(prefix, StringComparison.Ordinal)) return 0;
+
+                int seconds;
+                return int.TryParse(ErrorType.Substring(prefix.Length), out seconds)
+                    ? seconds : 0;
+            }
+        }
     }
 
     /// <summary>
@@ -235,6 +257,14 @@ namespace Lumigram.Mtproto
         /// The first call is wrapped in invokeWithLayer/initConnection, telling the
         /// server what layer we speak and what client we are; later calls go bare.
         /// </summary>
+        /// <summary>
+        /// The longest FLOOD_WAIT this will sit through rather than report.
+        ///
+        /// Short waits are ordinary - a burst of polling trips them and they pass in
+        /// a moment. Anything longer is worth telling the caller about.
+        /// </summary>
+        private const int MaxFloodWait = 10;
+
         public async Task<TlReader> InvokeAsync(byte[] body, ClientInfo info = null)
         {
             byte[] payload = _connectionInitialised
@@ -258,6 +288,19 @@ namespace Lumigram.Mtproto
                 {
                     // The session has been corrected - salt, clock or sequence -
                     // so the same request is simply sent again.
+                }
+                catch (RpcException ex)
+                {
+                    // Waited out rather than reported, but only when the wait is
+                    // short. A long one means the account is genuinely rate limited
+                    // and the caller should hear about it instead of the app going
+                    // silent for a quarter of an hour.
+                    int seconds = ex.FloodWaitSeconds;
+                    if (seconds <= 0 || seconds > MaxFloodWait) throw;
+
+                    // One second over what was asked, because the server measures
+                    // from when it saw the request and we are measuring from now.
+                    await Task.Delay(TimeSpan.FromSeconds(seconds + 1));
                 }
             }
 

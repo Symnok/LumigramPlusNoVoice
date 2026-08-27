@@ -265,6 +265,11 @@ namespace LumigramPlus.App
         /// </summary>
         private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(5);
 
+        /// <summary>Ticks between reads of the chat list, for notifications.</summary>
+        private const int ObserveEvery = 4;
+
+        private int _ticks;
+
         private DispatcherTimer _poll;
 
         protected override void OnNavigatedFrom(NavigationEventArgs e)
@@ -459,7 +464,16 @@ namespace LumigramPlus.App
 
             _poll = new DispatcherTimer();
             _poll.Interval = PollInterval;
-            _poll.Tick += delegate { Refresh(); ObserveOtherChats(); };
+            // The history is read on every tick; the other chats are not. This
+            // one exists only so notifications keep arriving while a conversation is
+            // open, and doing it five seconds apart was two requests every five
+            // seconds from one screen - enough to trip FLOOD_WAIT on its own.
+            _poll.Tick += delegate
+            {
+                Refresh();
+
+                if (++_ticks % ObserveEvery == 0) ObserveOtherChats();
+            };
             _poll.Start();
         }
 

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Package xmlns="http://schemas.microsoft.com/appx/2010/manifest" xmlns:m2="http://schemas.microsoft.com/appx/2013/manifest" xmlns:m3="http://schemas.microsoft.com/appx/2014/manifest" xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest">
-  <Identity Name="8f2b1c40-lumigramplus-0002" Publisher="CN=Lumigram" Version="1.0.1.0" />
+  <Identity Name="8f2b1c40-lumigramplus-0002" Publisher="CN=Lumigram" Version="1.0.3.0" />
   <mp:PhoneIdentity PhoneProductId="7B1C9D42-6E30-4A85-B2F9-1D40C8E5A736" PhonePublisherId="B1D9E4F0-2C7A-4E58-9F31-6A8D0C5B2E14" />
   <Properties>
     <DisplayName>Lumigram+ (WinRT)</DisplayName>
@@ -25,6 +25,22 @@
             <m3:ShowOn Tile="wide310x150Logo" />
           </m3:ShowNameOnTiles>
         </m3:DefaultTile>
+        <!--
+          The lock screen badge.
+
+          Notification="badge" is the count on its own, which is what this app has
+          to say: how many chats are waiting. badgeAndTileText would put a line of
+          text there too, and a message preview on a locked phone is the sort of
+          thing to be asked for rather than assumed.
+
+          The image is a silhouette, not a picture - the lock screen keeps its alpha
+          channel and draws the shape in the user's accent colour.
+
+          Declaring this is not enough on its own: the user has to add the app under
+          Settings, lock screen, choose apps to show quick status. Nothing appears
+          until they do.
+        -->
+        <m3:LockScreen Notification="badge" BadgeLogo="Assets\BadgeLogo.png" />
         <m3:SplashScreen Image="Assets\SplashScreen.png" />
       </m3:VisualElements>
       <!--
