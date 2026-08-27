@@ -29,6 +29,12 @@ namespace LumigramPlus.App
 
             _loading = true;
             AutoLoadSwitch.IsOn = AppSettings.AutoLoadPhotos;
+            NotificationsSwitch.IsOn = AppSettings.Notifications;
+
+            // Shown only when something is wrong. Toasts fail silently by design,
+            // so a working app and a refused one look identical without this.
+            string trouble = Notifications.LastError ?? Notifications.NotifierState();
+            ToastText.Text = trouble == null ? "" : "Toasts unavailable: " + trouble;
             _loading = false;
 
             AccountText.Text = TelegramService.Session != null
@@ -70,6 +76,13 @@ namespace LumigramPlus.App
         {
             TelegramService.Disconnect();
             Application.Current.Exit();
+        }
+
+        private void Notifications_Toggled(object sender, RoutedEventArgs e)
+        {
+            if (_loading) return;
+
+            AppSettings.Notifications = NotificationsSwitch.IsOn;
         }
 
         private void AutoLoad_Toggled(object sender, RoutedEventArgs e)

@@ -102,6 +102,25 @@
         <Button x:Name="LoadMoreButton" Grid.Row="4" Content="load more chats"
                 Click="LoadMore_Click" Visibility="Collapsed"
                 HorizontalAlignment="Stretch" Margin="0,8,0,8"/>
+        <!--
+          The in-app banner.
+
+          Windows Phone does not show an app its own toast while that app is on
+          screen, and the foreground is the only case this build has - so the
+          notification the user actually sees has to be drawn here. Last in the grid
+          and spanning every row, so it paints over what is underneath.
+        -->
+        <Border x:Name="BannerPanel" Grid.RowSpan="5" Visibility="Collapsed"
+                VerticalAlignment="Top" Padding="12,10,12,10"
+                Tapped="Banner_Tapped"
+                Background="{ThemeResource PhoneAccentBrush}">
+            <StackPanel>
+                <TextBlock x:Name="BannerTitle" Foreground="White" TextWrapping="NoWrap"
+                           FontSize="18"/>
+                <TextBlock x:Name="BannerBody" Foreground="White" TextWrapping="Wrap"
+                           FontSize="14" Opacity="0.9"/>
+            </StackPanel>
+        </Border>
     </Grid>
 
     <Page.BottomAppBar>

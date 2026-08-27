@@ -242,7 +242,63 @@ namespace LumigramPlus.App
         {
             base.OnNavigatedFrom(e);
 
+            Notifications.OpenPeerId = 0;
+            Notifications.Banner -= OnBanner;
+
             if (_poll != null) _poll.Stop();
+        }
+
+        /// <summary>
+        /// Shows an arriving message from another chat.
+        ///
+        /// Reading one conversation is exactly when a message elsewhere is worth
+        /// knowing about, and the toast raised for it is not shown to the app that
+        /// raised it - so without this the case would be silent.
+        /// </summary>
+        private void OnBanner(string title, string body, DialogEntry dialog)
+        {
+            BannerTitle.Text = title;
+            BannerBody.Text = body;
+            BannerPanel.Visibility = Visibility.Visible;
+
+            if (_bannerTimer == null)
+            {
+                _bannerTimer = new DispatcherTimer();
+                _bannerTimer.Interval = TimeSpan.FromSeconds(4);
+                _bannerTimer.Tick += delegate
+                {
+                    _bannerTimer.Stop();
+                    BannerPanel.Visibility = Visibility.Collapsed;
+                };
+            }
+
+            _bannerTimer.Stop();
+            _bannerTimer.Start();
+        }
+
+        private DispatcherTimer _bannerTimer;
+
+        /// <summary>
+        /// Keeps the notifier fed while a conversation is open.
+        ///
+        /// The chat list is not polling now, so nothing else is watching the other
+        /// chats - and those are the ones worth announcing.
+        /// </summary>
+        private async void ObserveOtherChats()
+        {
+            try
+            {
+                MtprotoClient client = await TelegramService.ConnectAsync();
+
+                Messages.DialogPage page = await Messages.GetDialogPageAsync(
+                    client, 20, 0, 0, null, TelegramService.Info);
+
+                Notifications.Observe(page.Entries);
+            }
+            catch (Exception)
+            {
+                // The next tick will try again.
+            }
         }
 
         protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -255,6 +311,11 @@ namespace LumigramPlus.App
                 SetBusy(false, "No chat to open.");
                 return;
             }
+
+            // Messages arriving for the chat on screen must not announce themselves.
+            Notifications.OpenPeerId = _peer.PeerId;
+            Notifications.Banner -= OnBanner;
+            Notifications.Banner += OnBanner;
 
             PeerTitle.Text = _peer.Title ?? "chat";
             _inputPeer = Messages.InputPeerFor(_peer.Kind, _peer.PeerId, _peer.AccessHash);
@@ -369,7 +430,7 @@ namespace LumigramPlus.App
 
             _poll = new DispatcherTimer();
             _poll.Interval = PollInterval;
-            _poll.Tick += delegate { Refresh(); };
+            _poll.Tick += delegate { Refresh(); ObserveOtherChats(); };
             _poll.Start();
         }
 

@@ -104,6 +104,24 @@
 
         <TextBox x:Name="ComposeBox" Grid.Row="3" TextWrapping="NoWrap" Margin="0,8,0,0"
                  KeyDown="Compose_KeyDown" PlaceholderText="message"/>
+        <!--
+          The in-app banner.
+
+          Windows Phone does not show an app its own toast while that app is on
+          screen, and the foreground is the only case this build has - so the
+          notification the user actually sees has to be drawn here. Last in the grid
+          and spanning every row, so it paints over what is underneath.
+        -->
+        <Border x:Name="BannerPanel" Grid.RowSpan="4" Visibility="Collapsed"
+                VerticalAlignment="Top" Padding="12,10,12,10"
+                Background="{ThemeResource PhoneAccentBrush}">
+            <StackPanel>
+                <TextBlock x:Name="BannerTitle" Foreground="White" TextWrapping="NoWrap"
+                           FontSize="18"/>
+                <TextBlock x:Name="BannerBody" Foreground="White" TextWrapping="Wrap"
+                           FontSize="14" Opacity="0.9"/>
+            </StackPanel>
+        </Border>
     </Grid>
     <!--
       Send lives on the app bar rather than beside the box.

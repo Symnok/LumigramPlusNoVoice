@@ -17,6 +17,7 @@ namespace LumigramPlus.App
     public static class AppSettings
     {
         private const string AutoLoadPhotosKey = "autoLoadPhotos";
+        private const string NotificationsKey = "notifications";
 
         /// <summary>
         /// Whether pictures are fetched as soon as they appear.
@@ -30,6 +31,20 @@ namespace LumigramPlus.App
         {
             get { return Read(AutoLoadPhotosKey, true); }
             set { Write(AutoLoadPhotosKey, value); }
+        }
+
+        /// <summary>
+        /// Whether arriving messages are announced.
+        ///
+        /// On by default. Only the foreground case exists for now - the app has to
+        /// be running to notice anything - so this is a switch over what happens
+        /// while it is open, and a background setting can join it when there is
+        /// something to switch.
+        /// </summary>
+        public static bool Notifications
+        {
+            get { return Read(NotificationsKey, true); }
+            set { Write(NotificationsKey, value); }
         }
 
         private static bool Read(string key, bool fallback)

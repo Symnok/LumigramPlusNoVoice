@@ -192,6 +192,7 @@ namespace LumigramPlus.App
         {
             Disconnect();
             Session = null;
+            Notifications.Reset();
 
             await SessionStore.DeleteAsync();
 
@@ -211,6 +212,7 @@ namespace LumigramPlus.App
         public static async Task<bool> SignOutAsync()
         {
             bool revoked = false;
+            Notifications.Reset();
 
             try
             {

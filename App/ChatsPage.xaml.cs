@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
+using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Navigation;
 using Lumigram.Mtproto;
 
@@ -186,6 +187,12 @@ namespace LumigramPlus.App
         protected override void OnNavigatedTo(NavigationEventArgs e)
         {
             base.OnNavigatedTo(e);
+
+            // No chat is open here, so everything is worth announcing.
+            Notifications.OpenPeerId = 0;
+            Notifications.Banner -= OnBanner;
+            Notifications.Banner += OnBanner;
+
             Load();
         }
 
@@ -193,8 +200,52 @@ namespace LumigramPlus.App
         {
             base.OnNavigatedFrom(e);
 
+            Notifications.Banner -= OnBanner;
+
             // Nothing worth fetching for a list nobody is looking at.
             if (_poll != null) _poll.Stop();
+        }
+
+        private void OnBanner(string title, string body, DialogEntry dialog)
+        {
+            _bannerPeerId = dialog != null ? dialog.PeerId : 0;
+
+            BannerTitle.Text = title;
+            BannerBody.Text = body;
+            BannerPanel.Visibility = Visibility.Visible;
+
+            if (_bannerTimer == null)
+            {
+                _bannerTimer = new DispatcherTimer();
+                _bannerTimer.Interval = TimeSpan.FromSeconds(4);
+                _bannerTimer.Tick += delegate
+                {
+                    _bannerTimer.Stop();
+                    BannerPanel.Visibility = Visibility.Collapsed;
+                };
+            }
+
+            // Restarted rather than left running, so a second message extends the
+            // banner instead of inheriting the remainder of the first one's time.
+            _bannerTimer.Stop();
+            _bannerTimer.Start();
+        }
+
+        private DispatcherTimer _bannerTimer;
+        private long _bannerPeerId;
+
+        private void Banner_Tapped(object sender, TappedRoutedEventArgs e)
+        {
+            BannerPanel.Visibility = Visibility.Collapsed;
+            if (_bannerTimer != null) _bannerTimer.Stop();
+
+            // Only what is already in the list can be opened - a peer we have no
+            // access hash for is not addressable, and the refresh that brings it in
+            // is seconds away.
+            DialogItem item = Find(_bannerPeerId);
+            if (item == null) return;
+
+            Frame.Navigate(typeof(ConversationPage), item);
         }
 
         private void StartPolling()
@@ -252,6 +303,8 @@ namespace LumigramPlus.App
 
                     ordered.Add(item);
                 }
+
+                Notifications.Observe(page.Entries);
 
                 // The poll only ever sees the main list, so archived chats already
                 // loaded are kept rather than dropped for being absent from it.
@@ -691,6 +744,28 @@ namespace LumigramPlus.App
             Frame.BackStack.Clear();
         }
 
+        /// <summary>
+        /// Opens the chat a tapped toast asked for, if one did.
+        ///
+        /// Only a chat already in the list can be opened - without an access hash a
+        /// peer is not addressable - so a toast for something past the first page
+        /// leaves the user on the list rather than on an error.
+        /// </summary>
+        private void OpenPending()
+        {
+            long peerId = Notifications.PendingPeerId;
+            if (peerId == 0) return;
+
+            // Cleared whether or not it is found, so a chat that could not be opened
+            // does not reopen itself on every later load.
+            Notifications.PendingPeerId = 0;
+
+            DialogItem item = Find(peerId);
+            if (item == null) return;
+
+            Frame.Navigate(typeof(ConversationPage), item);
+        }
+
         private DialogItem Find(long peerId)
         {
             foreach (DialogItem item in _all)
@@ -741,6 +816,10 @@ namespace LumigramPlus.App
 
                 _hasMore = page.HasMore;
 
+                // The first read only sets the baseline; announcing everything
+                // already waiting would be a wall of toasts for old messages.
+                Notifications.Observe(page.Entries);
+
                 int now = (int)(DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0,
                                                                DateTimeKind.Utc)).TotalSeconds;
 
@@ -756,6 +835,7 @@ namespace LumigramPlus.App
 
                 FetchAvatars(client);
                 LoadFolders(client);
+                OpenPending();
                 StartPolling();
             }
             catch (RpcException ex) when (TelegramService.IsAuthGone(ex))

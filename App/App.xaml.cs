@@ -107,6 +107,21 @@ namespace LumigramPlus.App
                 Window.Current.Content = frame;
             }
 
+            // A tapped toast launches the app with the argument it was given. It is
+            // parked rather than acted on here: opening a conversation needs the
+            // access hash, which only the loaded chat list has.
+            long tapped = Notifications.PeerFromArgument(e.Arguments);
+            if (tapped != 0) Notifications.PendingPeerId = tapped;
+
+            // The app was already running, so nothing below would run and the tap
+            // would do nothing at all. Going to the chat list is also what makes the
+            // pending chat get picked up.
+            if (frame.Content != null && tapped != 0)
+            {
+                frame.Navigate(typeof(ChatsPage));
+                frame.BackStack.Clear();
+            }
+
             if (frame.Content == null)
             {
                 SessionStore session = null;

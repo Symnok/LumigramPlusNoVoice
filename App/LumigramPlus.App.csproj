@@ -166,6 +166,8 @@
     <Compile Include="Platform\AvatarCache.cs" />
     <Compile Include="Platform\MediaCache.cs" />
     <Compile Include="Platform\AppSettings.cs" />
+    <Compile Include="Platform\LiveTile.cs" />
+    <Compile Include="Platform\Notifications.cs" />
     <Compile Include="Platform\Continuation.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
