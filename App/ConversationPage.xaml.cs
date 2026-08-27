@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Threading.Tasks;
 using Windows.UI;
 using Windows.UI.ViewManagement;
@@ -44,7 +45,24 @@ namespace LumigramPlus.App
         public ImageSource Picture
         {
             get { return _picture; }
-            set { _picture = value; Raise("Picture"); Raise("PictureVisibility"); Raise("MediaNoteVisibility"); }
+            set
+            {
+                _picture = value;
+                Raise("Picture");
+                Raise("PictureVisibility");
+                Raise("PlayMarkVisibility");
+                Raise("MediaNoteVisibility");
+            }
+        }
+
+        /// <summary>Shown over a video preview, so a still reads as playable.</summary>
+        public Visibility PlayMarkVisibility
+        {
+            get
+            {
+                bool video = Media != null && Media.Kind == MediaKind.Video;
+                return video && _picture != null ? Visibility.Visible : Visibility.Collapsed;
+            }
         }
 
         public Visibility PictureVisibility
@@ -56,14 +74,29 @@ namespace LumigramPlus.App
         /// The caption describing an attachment, shown only while there is no
         /// picture to show instead.
         /// </summary>
+        /// <summary>
+        /// Whether the caption under an attachment is shown.
+        ///
+        /// A photo speaks for itself once drawn, so its caption goes. Everything else
+        /// keeps one: a video preview is not the video, and hiding the caption once a
+        /// thumbnail appeared is what made every message about downloading, saving
+        /// and failing invisible.
+        /// </summary>
         public Visibility MediaNoteVisibility
         {
             get
             {
-                return _picture == null && !string.IsNullOrEmpty(_mediaNote)
-                    ? Visibility.Visible : Visibility.Collapsed;
+                if (string.IsNullOrEmpty(_mediaNote)) return Visibility.Collapsed;
+
+                bool photo = Media != null && Media.Kind == MediaKind.Photo;
+                if (photo && _picture != null) return Visibility.Collapsed;
+
+                return Visibility.Visible;
             }
         }
+
+        /// <summary>True once the attachment itself - not its preview - is on disk.</summary>
+        public bool Downloaded { get; set; }
 
         /// <summary>Hidden when a message is only an attachment.</summary>
         public Visibility TextVisibility
@@ -368,6 +401,7 @@ namespace LumigramPlus.App
                 {
                     TextMessage m = history.Messages[i];
                     if (m.Id == 0 || Contains(m.Id)) continue;
+                    if (Adopt(m)) continue;
 
                     Add(m);
                     added = true;
@@ -378,6 +412,15 @@ namespace LumigramPlus.App
                     ScrollToEnd();
                     MarkRead(client, history.Messages);
                 }
+            }
+            catch (RpcException ex) when (TelegramService.IsAuthGone(ex))
+            {
+                if (_poll != null) _poll.Stop();
+
+                await TelegramService.AuthGoneAsync();
+
+                Frame.Navigate(typeof(QrLoginPage));
+                Frame.BackStack.Clear();
             }
             catch (Exception)
             {
@@ -392,6 +435,37 @@ namespace LumigramPlus.App
         }
 
         private bool _refreshing;
+
+        /// <summary>
+        /// Gives an arriving copy of our own message to the bubble already waiting
+        /// for it.
+        ///
+        /// Covers the gap between showing a sent message at once and learning what
+        /// id the server gave it: a poll landing in between finds a message with an
+        /// id that matches nothing on screen, and draws it a second time. Only our
+        /// own messages with no id yet are considered, and each is claimed once, so
+        /// the same text sent twice on purpose still shows as two.
+        /// </summary>
+        private bool Adopt(TextMessage m)
+        {
+            if (!m.Out || m.Id == 0) return false;
+
+            foreach (MessageItem item in _messages)
+            {
+                if (!item.Out || item.Id != 0) continue;
+                if (item.Text != (m.Text ?? "")) continue;
+
+                // An attachment is not adopted into a bubble that has none: the
+                // placeholder cannot show a picture, so claiming the message would
+                // quietly swallow it.
+                if (m.Media != null && item.Media == null) return false;
+
+                item.Id = m.Id;
+                return true;
+            }
+
+            return false;
+        }
 
         private bool Contains(int id)
         {
@@ -430,6 +504,55 @@ namespace LumigramPlus.App
                 if (AppSettings.AutoLoadPhotos) LoadMedia(item);
                 else ShowIfCached(item);
             }
+            else if (m.Media != null && m.Media.Kind == MediaKind.Video)
+            {
+                // Whether the video itself is already here decides what a tap does,
+                // and the preview says nothing about that.
+                MarkIfDownloaded(item);
+                // The preview always, whatever the setting says about photos: it is
+                // a few kilobytes, and without it a video is a line of text.
+                LoadThumb(item);
+            }
+        }
+
+        /// <summary>
+        /// Fetches the small still that stands in for a video.
+        ///
+        /// Not gated on the photo setting: this is kilobytes rather than megabytes,
+        /// and the alternative is a video that looks like a sentence.
+        /// </summary>
+        private async void LoadThumb(MessageItem item)
+        {
+            try
+            {
+                MtprotoClient client = await TelegramService.ConnectAsync();
+
+                Uri uri = await MediaCache.GetThumbAsync(client, item.Media);
+                if (uri == null) return;
+
+                item.Picture = new Windows.UI.Xaml.Media.Imaging.BitmapImage(uri);
+                item.MediaNote = item.Media.Describe() + " - double tap to play";
+            }
+            catch (Exception)
+            {
+                // No preview; the caption still says what it is.
+            }
+        }
+
+        /// <summary>Notes that the file is already cached, without drawing anything.</summary>
+        private async void MarkIfDownloaded(MessageItem item)
+        {
+            try
+            {
+                Windows.Storage.StorageFile file = await MediaCache.FindAsync(item.Media);
+                if (file == null) return;
+
+                item.Downloaded = true;
+                item.MediaNote = item.Media.Describe() + " - double tap to play";
+            }
+            catch (Exception)
+            {
+            }
         }
 
         /// <summary>Shows a picture that is already on disk, without fetching.</summary>
@@ -440,6 +563,7 @@ namespace LumigramPlus.App
                 Windows.Storage.StorageFile file = await MediaCache.FindAsync(item.Media);
                 if (file == null) return;
 
+                item.Downloaded = true;
                 item.Picture = new Windows.UI.Xaml.Media.Imaging.BitmapImage(
                     new Uri("ms-appdata:///local/media/" + file.Name));
             }
@@ -456,10 +580,27 @@ namespace LumigramPlus.App
         /// connection a photo is tens of seconds, and a message that says nothing
         /// for that long reads as broken.
         /// </summary>
-        private async void LoadMedia(MessageItem item)
+        private void LoadMedia(MessageItem item)
         {
-            if (item.Media == null || item.Picture != null) return;
-            if (item.Loading) return;
+            var ignored = LoadMediaAsync(item);
+        }
+
+        /// <summary>
+        /// The awaitable form.
+        ///
+        /// Needed because a double tap on a video that has not been downloaded has
+        /// to fetch it and then play it, and an async void cannot be waited for.
+        /// </summary>
+        private async Task LoadMediaAsync(MessageItem item)
+        {
+            if (item.Media == null || item.Loading) return;
+
+            // Guarded on having the file, not on having something to look at. A
+            // video shows its thumbnail in Picture, so treating that as "already
+            // downloaded" meant the video itself could never be fetched - the tap
+            // that should have started it returned here instead, and every path
+            // behind it went quiet.
+            if (item.Downloaded) return;
 
             item.Loading = true;
             string caption = item.MediaNote;
@@ -484,9 +625,17 @@ namespace LumigramPlus.App
                     return;
                 }
 
+                item.Downloaded = true;
+
                 if (item.Media.Kind == MediaKind.Photo)
                 {
                     item.Picture = new Windows.UI.Xaml.Media.Imaging.BitmapImage(uri);
+                    return;
+                }
+
+                if (item.Media.Kind == MediaKind.Video)
+                {
+                    item.MediaNote = item.Media.Describe() + " - double tap to play";
                     return;
                 }
 
@@ -543,11 +692,15 @@ namespace LumigramPlus.App
 
                 item.MediaNote = "saving...";
 
-                // Each library takes its own kind. A video written into the pictures
-                // library is accepted and then shown by nothing.
+                // The camera roll for video, not the videos library.
+                //
+                // VideosLibrary is readable and not writable on this platform, so a
+                // copy into it is refused outright - the same wall the Silverlight
+                // client hit. The camera roll is where the phone itself puts video,
+                // and it accepts one from an app.
                 Windows.Storage.StorageFolder target = photo
                     ? Windows.Storage.KnownFolders.SavedPictures
-                    : Windows.Storage.KnownFolders.VideosLibrary;
+                    : Windows.Storage.KnownFolders.CameraRoll;
 
                 await file.CopyAsync(target, "lumigram-" + file.Name,
                                      Windows.Storage.NameCollisionOption.ReplaceExisting);
@@ -556,7 +709,10 @@ namespace LumigramPlus.App
             }
             catch (Exception ex)
             {
-                item.MediaNote = "not saved: " + ex.Message;
+                // Naming the way out, not only the failure: "save as..."
+                // writes wherever the user chooses and is not subject to the
+                // library permissions this path depends on.
+                item.MediaNote = "not saved (" + ex.Message.Trim() + ") - try save as...";
             }
         }
 
@@ -578,6 +734,13 @@ namespace LumigramPlus.App
         }
 
         /// <summary>Opens a downloaded picture full screen, where it can be zoomed.</summary>
+        /// <summary>
+        /// Opens an attachment full screen: a video plays, a picture zooms.
+        ///
+        /// A video that has not been downloaded is fetched first - the preview says
+        /// nothing about whether the file itself is here, so a double tap on one
+        /// would otherwise do nothing at all.
+        /// </summary>
         private async void Media_DoubleTap(object sender,
                                            Windows.UI.Xaml.Input.DoubleTappedRoutedEventArgs e)
         {
@@ -588,7 +751,23 @@ namespace LumigramPlus.App
             if (item == null || item.Media == null) return;
 
             Windows.Storage.StorageFile file = await MediaCache.FindAsync(item.Media);
-            if (file == null) return;
+
+            if (file == null)
+            {
+                if (item.Media.Kind != MediaKind.Video) return;
+
+                item.MediaNote = "loading video...";
+                await LoadMediaAsync(item);
+
+                file = await MediaCache.FindAsync(item.Media);
+                if (file == null) return;
+            }
+
+            if (item.Media.Kind == MediaKind.Video)
+            {
+                Frame.Navigate(typeof(VideoPage), file.Name);
+                return;
+            }
 
             Frame.Navigate(typeof(ImageViewerPage), file.Name);
         }
@@ -609,7 +788,9 @@ namespace LumigramPlus.App
             var item = element.DataContext as MessageItem;
             if (item == null || item.Media == null) return;
 
-            PlayOrLoad(item);
+            // A single tap fetches. Playing is on the double tap, so that tapping a
+            // preview to see it bigger never starts a video by accident.
+            LoadMedia(item);
         }
 
         /// <summary>
@@ -715,13 +896,10 @@ namespace LumigramPlus.App
             {
                 MtprotoClient client = await TelegramService.ConnectAsync();
 
-                Windows.Storage.Streams.IBuffer read =
-                    await Windows.Storage.FileIO.ReadBufferAsync(file);
-
-                byte[] bytes;
-                Windows.Security.Cryptography.CryptographicBuffer.CopyToByteArray(read, out bytes);
-
-                using (var stream = new System.IO.MemoryStream(bytes))
+                // Read from the file as the upload consumes it. Loading it whole
+                // first works for a photo and is exactly what makes sending a video
+                // fail on a phone with little memory to spare.
+                using (System.IO.Stream stream = await file.OpenStreamForReadAsync())
                 {
                     UploadedFile uploaded = await Upload.SendFileAsync(
                         client, TelegramService.Crypto, file.Name, stream.Length,
@@ -743,8 +921,9 @@ namespace LumigramPlus.App
 
                     if (type.StartsWith("image/"))
                     {
-                        await Upload.SendPhotoAsync(client, TelegramService.Crypto,
-                                                    _inputPeer, uploaded, "", TelegramService.Info);
+                        pending.Id = await Upload.SendPhotoAsync(
+                            client, TelegramService.Crypto, _inputPeer, uploaded, "",
+                            TelegramService.Info);
                     }
                     else if (type.StartsWith("video/"))
                     {
@@ -754,21 +933,27 @@ namespace LumigramPlus.App
                         Windows.Storage.FileProperties.VideoProperties video =
                             await file.Properties.GetVideoPropertiesAsync();
 
-                        await Upload.SendVideoAsync(
+                        pending.Id = await Upload.SendVideoAsync(
                             client, TelegramService.Crypto, _inputPeer, uploaded, "",
                             type, (int)video.Duration.TotalSeconds,
                             (int)video.Width, (int)video.Height, TelegramService.Info);
                     }
                     else
                     {
-                        await Upload.SendDocumentAsync(client, TelegramService.Crypto,
-                                                       _inputPeer, uploaded, "",
-                                                       type.Length > 0 ? type : "application/octet-stream",
-                                                       TelegramService.Info);
+                        pending.Id = await Upload.SendDocumentAsync(
+                            client, TelegramService.Crypto, _inputPeer, uploaded, "",
+                            type.Length > 0 ? type : "application/octet-stream",
+                            TelegramService.Info);
                     }
                 }
 
-                pending.MediaNote = "sent " + file.Name;
+                // The placeholder goes, and the real message takes its place.
+                //
+                // A pending bubble carries no MediaInfo - there is nothing to
+                // download until the server has the file - so leaving it on screen
+                // means the picture never appears. Dropping it lets the refresh add
+                // the message properly, with the attachment attached.
+                _messages.Remove(pending);
                 Refresh();
             }
             catch (Exception ex)
@@ -884,7 +1069,12 @@ namespace LumigramPlus.App
             {
                 MtprotoClient client = await TelegramService.ConnectAsync();
 
-                await Messages.SendTextAsync(client, TelegramService.Crypto, _inputPeer, text);
+                // Taking the id is what stops the message being shown twice: the
+                // bubble put on screen a moment ago carries no id, so when the same
+                // message comes back from the server there is nothing to recognise
+                // it by and it is added a second time.
+                pending.Id = await Messages.SendTextAsync(
+                    client, TelegramService.Crypto, _inputPeer, text);
 
                 SetBusy(false, "");
             }

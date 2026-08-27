@@ -8,6 +8,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
@@ -16,17 +17,30 @@
             <TextBlock Text="chats" FontSize="30"/>
         </StackPanel>
 
-        <StackPanel Grid.Row="1" Margin="0,0,0,8">
+        <!--
+          Folder tabs. A scrolling row of buttons rather than a Pivot: a Pivot owns
+          the page and swipes between fixed sections, where these are read from the
+          account and change. One list underneath serves them all.
+        -->
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Disabled"
+                      HorizontalScrollMode="Auto" VerticalScrollMode="Disabled"
+                      Margin="0,0,0,4">
+            <StackPanel x:Name="FolderTabs" Orientation="Horizontal"/>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="2" Margin="0,0,0,8">
             <ProgressBar x:Name="Busy" IsIndeterminate="True" Visibility="Collapsed"/>
             <TextBlock x:Name="StatusText" TextWrapping="Wrap" Opacity="0.7" FontSize="14"/>
         </StackPanel>
 
-        <ListView x:Name="DialogList" Grid.Row="2"
+        <ListView x:Name="DialogList" Grid.Row="3"
                   SelectionMode="None" IsItemClickEnabled="True"
                   ItemClick="Dialog_Click">
             <ListView.ItemTemplate>
                 <DataTemplate>
-                    <Grid Margin="0,8,0,8">
+                    <Grid Margin="0,8,0,8" Holding="Dialog_Holding"
+                          Background="Transparent">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
@@ -51,8 +65,21 @@
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"
                                            FontSize="20"/>
-                                <TextBlock Text="muted" Visibility="{Binding MutedVisibility}"
-                                           Opacity="0.45" FontSize="12" Margin="8,4,0,0"/>
+                                <!--
+                                  A crossed-out speaker, drawn rather than written.
+                                  A word costs a piece of the title on a narrow
+                                  screen, and this platform has no icon font that
+                                  can be relied on - a missing glyph shows as an
+                                  empty box.
+                                -->
+                                <Canvas Width="17" Height="12" Opacity="0.65"
+                                        Margin="8,6,0,0" VerticalAlignment="Center"
+                                        Visibility="{Binding MutedVisibility}">
+                                    <Path Fill="Red"
+                                          Data="M0,4 L2.5,4 L6,0.5 L6,11.5 L2.5,8 L0,8 Z"/>
+                                    <Path Stroke="Red" StrokeThickness="1.4"
+                                          Data="M9.5,3.5 L15.5,8.5 M15.5,3.5 L9.5,8.5"/>
+                                </Canvas>
                             </StackPanel>
                             <TextBlock Text="{Binding Preview}" Opacity="0.6" FontSize="14"
                                        TextTrimming="CharacterEllipsis"/>

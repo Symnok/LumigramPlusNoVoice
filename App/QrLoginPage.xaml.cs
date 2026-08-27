@@ -225,7 +225,6 @@ namespace LumigramPlus.App
 
         private async Task<QrLoginStep> RefreshAsync()
         {
-            Log("code expired, refreshing");
             Say("The code expired. Getting another...");
 
             QrLoginStep step = await QrLogin.ExportTokenAsync(_client, Secrets.ApiId, Secrets.ApiHash,
@@ -412,20 +411,11 @@ namespace LumigramPlus.App
 
             _leaving = true;            // nothing left to poll for
 
-            ScanText.Visibility = Visibility.Collapsed;
-            QrPlate.Visibility = Visibility.Collapsed;
-            PasswordPanel.Visibility = Visibility.Collapsed;
-
-            Say("");
-            DoneDetail.Text = TelegramService.Session != null
-                ? "Authorisation stored for " + TelegramService.Session.Host + "."
-                : "Authorisation stored.";
-
-            DonePanel.Visibility = Visibility.Visible;
-        }
-
-        private void Continue_Click(object sender, RoutedEventArgs e)
-        {
+            // Straight to the chats. There used to be a "signed in - continue"
+            // step here, from when the destination was a menu with a sign-in button
+            // on it and arriving there looked like being sent back to the start.
+            // The destination is the chat list now, so the confirmation is one tap
+            // between the user and the app.
             Frame.Navigate(typeof(ChatsPage));
 
             // Signing in is not somewhere to come back to.

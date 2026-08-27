@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Threading.Tasks;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Navigation;
@@ -24,6 +25,17 @@ namespace LumigramPlus.App
 
         /// <summary>Newest message already read, so a chat can open where it left off.</summary>
         public int ReadInboxMaxId { get; set; }
+
+        /// <summary>True when this came from the archive rather than the main list.</summary>
+        public bool Archived { get; set; }
+
+        /// <summary>
+        /// What the server said about this chat.
+        ///
+        /// Kept whole so a folder rule can be applied without copying every field a
+        /// rule might read onto this class.
+        /// </summary>
+        public DialogEntry Entry { get; set; }
 
         /// <summary>
         /// The picture, once it has been fetched.
@@ -132,6 +144,22 @@ namespace LumigramPlus.App
         private readonly ObservableCollection<DialogItem> _dialogs =
             new ObservableCollection<DialogItem>();
 
+        /// <summary>
+        /// Every chat read so far, whichever tab is showing.
+        ///
+        /// The bound collection holds only what the selected tab shows, so the full
+        /// set lives here and is filtered into it. Folders are rules over these
+        /// chats rather than separate lists - only the archive is genuinely
+        /// separate, and it is fetched rather than filtered.
+        /// </summary>
+        private readonly List<DialogItem> _all = new List<DialogItem>();
+
+        private List<ChatFolder> _folders = new List<ChatFolder>();
+
+        private const int MainList = -1;
+        private int _selectedFolder = MainList;
+        private bool _archiveLoaded;
+
         public ChatsPage()
         {
             InitializeComponent();
@@ -222,13 +250,27 @@ namespace LumigramPlus.App
                     ordered.Add(item);
                 }
 
-                if (anyNew || !SameOrder(ordered))
+                // The poll only ever sees the main list, so archived chats already
+                // loaded are kept rather than dropped for being absent from it.
+                foreach (DialogItem item in _all)
+                    if (item.Archived && !ordered.Contains(item)) ordered.Add(item);
+
+                if (anyNew || !SameOrderInAll(ordered))
                 {
-                    _dialogs.Clear();
-                    foreach (DialogItem item in ordered) _dialogs.Add(item);
+                    _all.Clear();
+                    foreach (DialogItem item in ordered) _all.Add(item);
+
+                    ApplyFolder();
 
                     if (anyNew) FetchAvatars(client);
                 }
+            }
+            catch (RpcException ex) when (TelegramService.IsAuthGone(ex))
+            {
+                // Ending the session elsewhere is exactly how this surfaces: the
+                // poll is refused, and without noticing, the app would keep showing
+                // a chat list it can no longer read.
+                await SignedOutAsync();
             }
             catch (Exception)
             {
@@ -251,20 +293,345 @@ namespace LumigramPlus.App
             Frame.Navigate(typeof(SettingsPage));
         }
 
+        /// <summary>
+        /// Reads the folder list and draws the tabs.
+        ///
+        /// A failure is not reported: an account with no folders and one whose
+        /// folders could not be read look the same, and either way the main list is
+        /// there and usable.
+        /// </summary>
+        private async void LoadFolders(MtprotoClient client)
+        {
+            try
+            {
+                _folders = await Folders.GetAsync(client, TelegramService.Info);
+            }
+            catch (Exception)
+            {
+                _folders = new List<ChatFolder>();
+            }
+
+            BuildTabs();
+        }
+
+        private void BuildTabs()
+        {
+            FolderTabs.Children.Clear();
+
+            AddTab("chats", MainList);
+            foreach (ChatFolder folder in _folders) AddTab(folder.Title, folder.Id);
+
+            // Last, because it is where things go to be out of the way.
+            AddTab("archive", Folders.ArchiveFolderId);
+        }
+
+        private void AddTab(string title, int id)
+        {
+            int folderId = id;
+
+            var button = new Button
+            {
+                Content = title,
+                Margin = new Thickness(0, 0, 4, 0),
+                Padding = new Thickness(10, 4, 10, 4),
+                FontSize = 18,
+                Opacity = folderId == _selectedFolder ? 1.0 : 0.5,
+            };
+
+            button.Click += delegate { SelectFolder(folderId); };
+            FolderTabs.Children.Add(button);
+        }
+
+        private async void SelectFolder(int folderId)
+        {
+            _selectedFolder = folderId;
+            BuildTabs();
+
+            // The archive is a second list, so it has to be fetched the first time
+            // it is opened rather than filtered out of what is already here.
+            if (folderId == Folders.ArchiveFolderId && !_archiveLoaded) await LoadArchiveAsync();
+
+            ApplyFolder();
+        }
+
+        private async Task LoadArchiveAsync()
+        {
+            SetBusy(true, "Loading archive...");
+
+            try
+            {
+                MtprotoClient client = await TelegramService.ConnectAsync();
+
+                Messages.DialogPage page = await Messages.GetDialogPageAsync(
+                    client, PageSize, 0, 0, null, TelegramService.Info,
+                    Folders.ArchiveFolderId);
+
+                int now = Now();
+                foreach (DialogEntry d in page.Entries)
+                {
+                    if (Find(d.PeerId) != null) continue;
+                    _all.Add(ItemFor(d, now));
+                }
+
+                _archiveLoaded = true;
+                SetBusy(false, "");
+
+                FetchAvatars(client);
+            }
+            catch (Exception ex)
+            {
+                var rpc = ex as RpcException;
+                SetBusy(false, "Could not load the archive: " +
+                               (rpc != null ? rpc.ErrorType : ex.Message));
+            }
+        }
+
+        /// <summary>Rebuilds the visible list for whichever tab is selected.</summary>
+        private void ApplyFolder()
+        {
+            int now = Now();
+
+            _dialogs.Clear();
+            foreach (DialogItem item in _all)
+            {
+                if (!Shows(item, now)) continue;
+                _dialogs.Add(item);
+            }
+        }
+
+        private bool Shows(DialogItem item, int now)
+        {
+            if (_selectedFolder == MainList) return !item.Archived;
+            if (_selectedFolder == Folders.ArchiveFolderId) return item.Archived;
+
+            foreach (ChatFolder folder in _folders)
+            {
+                if (folder.Id != _selectedFolder) continue;
+                return Folders.Contains(folder, item.Entry, now);
+            }
+
+            return false;
+        }
+
+        private static int Now()
+        {
+            return (int)(DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0,
+                                                        DateTimeKind.Utc)).TotalSeconds;
+        }
+
+        /// <summary>
+        /// The long-tap menu, built for the chat it was opened on.
+        ///
+        /// Assembled in code rather than declared: the folder entries depend on the
+        /// account, and which of mute/unmute or archive/unarchive belongs there
+        /// depends on the chat.
+        /// </summary>
+        private void Dialog_Holding(object sender, Windows.UI.Xaml.Input.HoldingRoutedEventArgs e)
+        {
+            if (e.HoldingState != Windows.UI.Input.HoldingState.Started) return;
+
+            var element = sender as FrameworkElement;
+            if (element == null) return;
+
+            var chat = element.DataContext as DialogItem;
+            if (chat == null) return;
+
+            var menu = new Windows.UI.Xaml.Controls.MenuFlyout();
+
+            Add(menu, chat.Muted ? "unmute" : "mute", delegate { ToggleMute(chat); });
+            Add(menu, chat.Archived ? "unarchive" : "archive", delegate { ToggleArchive(chat); });
+
+            foreach (ChatFolder folder in _folders)
+            {
+                if (!folder.Editable) continue;
+
+                ChatFolder which = folder;
+                bool inside = folder.Include.Contains(chat.PeerId) ||
+                              folder.Pinned.Contains(chat.PeerId);
+
+                Add(menu, (inside ? "remove from " : "add to ") + folder.Title,
+                    delegate { ToggleFolder(chat, which, !inside); });
+            }
+
+            Add(menu, "clear history", delegate { ClearOrDelete(chat, true); });
+            Add(menu, "delete chat", delegate { ClearOrDelete(chat, false); });
+
+            menu.ShowAt(element);
+        }
+
+        private void Add(Windows.UI.Xaml.Controls.MenuFlyout menu, string text, Action action)
+        {
+            var entry = new Windows.UI.Xaml.Controls.MenuFlyoutItem { Text = text };
+            entry.Click += delegate { action(); };
+            menu.Items.Add(entry);
+        }
+
+        private async void ToggleMute(DialogItem chat)
+        {
+            bool muted = !chat.Muted;
+
+            // Changed here first so the list answers the tap at once; put back if
+            // the server refuses, since a chat that looks muted and is not is worse
+            // than one that appeared not to change.
+            chat.Muted = muted;
+
+            try
+            {
+                MtprotoClient client = await TelegramService.ConnectAsync();
+
+                await Messages.SetMutedAsync(client, chat.Kind, chat.PeerId,
+                                             chat.AccessHash, muted, TelegramService.Info);
+            }
+            catch (Exception ex)
+            {
+                chat.Muted = !muted;
+
+                var rpc = ex as RpcException;
+                SetBusy(false, "Could not change mute: " +
+                               (rpc != null ? rpc.ErrorType : ex.Message));
+            }
+        }
+
+        private async void ToggleArchive(DialogItem chat)
+        {
+            bool archive = !chat.Archived;
+            SetBusy(true, archive ? "Archiving..." : "Unarchiving...");
+
+            try
+            {
+                MtprotoClient client = await TelegramService.ConnectAsync();
+
+                await Folders.SetArchivedAsync(
+                    client, Messages.InputPeerFor(chat.Kind, chat.PeerId, chat.AccessHash),
+                    archive, TelegramService.Info);
+
+                chat.Archived = archive;
+                if (chat.Entry != null) chat.Entry.Archived = archive;
+
+                SetBusy(false, "");
+                ApplyFolder();
+            }
+            catch (Exception ex)
+            {
+                var rpc = ex as RpcException;
+                SetBusy(false, "Could not " + (archive ? "archive" : "unarchive") + ": " +
+                               (rpc != null ? rpc.ErrorType : ex.Message));
+            }
+        }
+
+        private async void ToggleFolder(DialogItem chat, ChatFolder folder, bool member)
+        {
+            SetBusy(true, (member ? "Adding to " : "Removing from ") + folder.Title + "...");
+
+            try
+            {
+                MtprotoClient client = await TelegramService.ConnectAsync();
+
+                await Folders.SetMembershipAsync(
+                    client, folder,
+                    Messages.InputPeerFor(chat.Kind, chat.PeerId, chat.AccessHash),
+                    chat.PeerId, member, TelegramService.Info);
+
+                SetBusy(false, "");
+                ApplyFolder();
+            }
+            catch (Exception ex)
+            {
+                var rpc = ex as RpcException;
+                SetBusy(false, "Could not change the folder: " +
+                               (rpc != null ? rpc.ErrorType : ex.Message));
+
+                // The copy in memory has changed and the server has not, so the two
+                // now disagree; re-reading is the only way back to the truth.
+                try
+                {
+                    MtprotoClient fresh = await TelegramService.ConnectAsync();
+                    LoadFolders(fresh);
+                }
+                catch (Exception) { }
+            }
+        }
+
+        /// <summary>
+        /// Empties a chat, or removes it entirely.
+        ///
+        /// Both are asked about first. Neither can be undone, and the difference
+        /// between them is not obvious from two adjacent menu entries.
+        /// </summary>
+        private async void ClearOrDelete(DialogItem chat, bool justClear)
+        {
+            var dialog = new Windows.UI.Popups.MessageDialog(
+                justClear
+                    ? "Delete all messages in " + chat.Title + "? This cannot be undone."
+                    : "Delete " + chat.Title + " and all its messages? This cannot be undone.",
+                justClear ? "Clear history" : "Delete chat");
+
+            dialog.Commands.Add(new Windows.UI.Popups.UICommand("yes"));
+            dialog.Commands.Add(new Windows.UI.Popups.UICommand("cancel"));
+            dialog.DefaultCommandIndex = 1;
+            dialog.CancelCommandIndex = 1;
+
+            Windows.UI.Popups.IUICommand chosen = await dialog.ShowAsync();
+            if (chosen == null || chosen.Label != "yes") return;
+
+            SetBusy(true, justClear ? "Clearing..." : "Deleting...");
+
+            try
+            {
+                MtprotoClient client = await TelegramService.ConnectAsync();
+
+                await Messages.DeleteHistoryAsync(
+                    client, Messages.InputPeerFor(chat.Kind, chat.PeerId, chat.AccessHash),
+                    justClear, false, TelegramService.Info);
+
+                if (!justClear)
+                {
+                    _all.Remove(chat);
+                    _dialogs.Remove(chat);
+                }
+                else
+                {
+                    chat.Preview = "";
+                    chat.UnreadCount = 0;
+                }
+
+                SetBusy(false, "");
+            }
+            catch (Exception ex)
+            {
+                var rpc = ex as RpcException;
+                SetBusy(false, "Could not " + (justClear ? "clear" : "delete") + ": " +
+                               (rpc != null ? rpc.ErrorType : ex.Message));
+            }
+        }
+
+        /// <summary>Stops everything and returns to signing in.</summary>
+        private async Task SignedOutAsync()
+        {
+            if (_poll != null) _poll.Stop();
+
+            await TelegramService.AuthGoneAsync();
+
+            SetBusy(false, "Signed out.");
+
+            Frame.Navigate(typeof(QrLoginPage));
+            Frame.BackStack.Clear();
+        }
+
         private DialogItem Find(long peerId)
         {
-            foreach (DialogItem item in _dialogs)
+            foreach (DialogItem item in _all)
                 if (item.PeerId == peerId) return item;
 
             return null;
         }
 
-        private bool SameOrder(List<DialogItem> ordered)
+        private bool SameOrderInAll(List<DialogItem> ordered)
         {
-            if (ordered.Count != _dialogs.Count) return false;
+            if (ordered.Count != _all.Count) return false;
 
             for (int i = 0; i < ordered.Count; i++)
-                if (!ReferenceEquals(ordered[i], _dialogs[i])) return false;
+                if (!ReferenceEquals(ordered[i], _all[i])) return false;
 
             return true;
         }
@@ -282,6 +649,8 @@ namespace LumigramPlus.App
                 Muted = d.IsMuted(now),
                 PhotoId = d.PhotoId,
                 ReadInboxMaxId = d.ReadInboxMaxId,
+                Archived = d.Archived,
+                Entry = d,
             };
         }
 
@@ -300,15 +669,23 @@ namespace LumigramPlus.App
                 int now = (int)(DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0,
                                                                DateTimeKind.Utc)).TotalSeconds;
 
-                _dialogs.Clear();
-                foreach (DialogEntry d in page.Entries) _dialogs.Add(ItemFor(d, now));
+                _all.Clear();
+                foreach (DialogEntry d in page.Entries) _all.Add(ItemFor(d, now));
+
+                _archiveLoaded = false;
+                ApplyFolder();
 
                 SetBusy(false, _dialogs.Count == 0
                     ? "No chats."
                     : _dialogs.Count + " chats" + (page.HasMore ? " (more available)" : ""));
 
                 FetchAvatars(client);
+                LoadFolders(client);
                 StartPolling();
+            }
+            catch (RpcException ex) when (TelegramService.IsAuthGone(ex))
+            {
+                await SignedOutAsync();
             }
             catch (Exception ex)
             {

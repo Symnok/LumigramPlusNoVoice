@@ -44,7 +44,7 @@ namespace LumigramPlus.App
         /// arrives. The page that asked may have been rebuilt in the meantime, which
         /// is why the current one is asked rather than a remembered reference.
         /// </summary>
-        protected override void OnActivated(IActivatedEventArgs args)
+        protected override async void OnActivated(IActivatedEventArgs args)
         {
             var frame = Window.Current.Content as Frame;
 
@@ -52,6 +52,28 @@ namespace LumigramPlus.App
             {
                 frame = new Frame();
                 Window.Current.Content = frame;
+            }
+
+            // The app may have been shut down while the picker was up, in which
+            // case there is no page behind this activation at all. Landing on an
+            // empty frame leaves the user stuck on a blank screen with nothing to go
+            // back to, which is worse than losing the file they picked.
+            if (frame.Content == null)
+            {
+                SessionStore session = null;
+
+                try { session = await SessionStore.LoadAsync(); }
+                catch (Exception) { }
+
+                if (session != null && session.SignedIn)
+                {
+                    TelegramService.Session = session;
+                    frame.Navigate(typeof(ChatsPage));
+                }
+                else
+                {
+                    frame.Navigate(typeof(QrLoginPage));
+                }
             }
 
             var target = frame.Content as IFileContinuation;

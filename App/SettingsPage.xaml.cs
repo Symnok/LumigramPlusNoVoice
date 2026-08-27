@@ -1,3 +1,4 @@
+using System;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Navigation;
@@ -37,10 +38,23 @@ namespace LumigramPlus.App
 
         private async void SignOut_Click(object sender, RoutedEventArgs e)
         {
-            TelegramService.Disconnect();
-            TelegramService.Session = null;
+            AccountText.Text = "Signing out...";
 
-            await SessionStore.DeleteAsync();
+            bool revoked = await TelegramService.SignOutAsync();
+
+            if (!revoked)
+            {
+                // The key is gone from this phone either way, but the session may
+                // still be live on Telegram's side - and only the user can clear it
+                // from another device.
+                var dialog = new Windows.UI.Popups.MessageDialog(
+                    "The key on this phone has been deleted, but Telegram could not " +
+                    "be reached to end the session. Remove it from another device " +
+                    "under Settings, Devices.",
+                    "Signed out on this phone");
+
+                await dialog.ShowAsync();
+            }
 
             Frame.Navigate(typeof(QrLoginPage));
             Frame.BackStack.Clear();

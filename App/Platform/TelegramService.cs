@@ -160,6 +160,75 @@ namespace LumigramPlus.App
             await Session.SaveAsync();
         }
 
+        /// <summary>
+        /// Whether this error means the authorisation no longer exists.
+        ///
+        /// The session can be ended from anywhere - another device, Telegram's own
+        /// device list, or the account being deactivated - and the only way this app
+        /// finds out is by being refused. Retrying cannot help, and retrying quietly
+        /// is how an app ends up looking broken instead of signed out.
+        /// </summary>
+        public static bool IsAuthGone(RpcException ex)
+        {
+            string type = ex == null ? "" : (ex.ErrorType ?? "");
+
+            return type.Contains("AUTH_KEY_UNREGISTERED")
+                || type.Contains("SESSION_REVOKED")
+                || type.Contains("SESSION_EXPIRED")
+                || type.Contains("USER_DEACTIVATED")
+                || type.Contains("AUTH_KEY_DUPLICATED");
+        }
+
+        /// <summary>
+        /// Raised when the server has refused the stored authorisation.
+        ///
+        /// Pages listen so whatever is on screen can stop and send the user back to
+        /// signing in, rather than sitting there failing every few seconds.
+        /// </summary>
+        public static event Action SignedOutRemotely;
+
+        /// <summary>Forgets an authorisation the server has already discarded.</summary>
+        public static async Task AuthGoneAsync()
+        {
+            Disconnect();
+            Session = null;
+
+            await SessionStore.DeleteAsync();
+
+            Action handler = SignedOutRemotely;
+            if (handler != null) handler();
+        }
+
+        /// <summary>
+        /// Ends the session on the server as well as here.
+        ///
+        /// Deleting the key locally is not signing out: the session stays live in
+        /// Telegram's device list and anyone holding the key could still use it.
+        /// The local copy goes either way - the user asked to sign out, and a
+        /// network failure must not leave a credential on the phone - so the caller
+        /// is told whether the server end was reached.
+        /// </summary>
+        public static async Task<bool> SignOutAsync()
+        {
+            bool revoked = false;
+
+            try
+            {
+                MtprotoClient client = await ConnectAsync();
+                revoked = await Messages.LogOutAsync(client, Info);
+            }
+            catch (Exception)
+            {
+                revoked = false;
+            }
+
+            Disconnect();
+            Session = null;
+
+            await SessionStore.DeleteAsync();
+            return revoked;
+        }
+
         public static async Task SignedInAsync()
         {
             if (Session == null) return;

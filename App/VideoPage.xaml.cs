@@ -68,7 +68,9 @@ namespace LumigramPlus.App
 
                 StorageFile file = await folder.GetFileAsync(_fileName);
 
-                await file.CopyAsync(KnownFolders.VideosLibrary, "lumigram-" + _fileName,
+                // The camera roll, not the videos library: the latter cannot be
+                // written to on this platform and refuses the copy.
+                await file.CopyAsync(KnownFolders.CameraRoll, "lumigram-" + _fileName,
                                      NameCollisionOption.ReplaceExisting);
 
                 SaveButton.Label = "saved";

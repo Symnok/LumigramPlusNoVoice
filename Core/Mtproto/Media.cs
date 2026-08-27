@@ -51,6 +51,15 @@ namespace Lumigram.Mtproto
         /// <summary>A tiny inline preview, when the message carried one.</summary>
         public byte[] InlineThumbnail;
 
+        /// <summary>
+        /// The size name of a thumbnail this document carries, if any.
+        ///
+        /// A video is addressed by the same id and reference as its thumbnail; only
+        /// the size name differs. That is what makes showing a preview cheap - the
+        /// picture is a few kilobytes where the video is megabytes.
+        /// </summary>
+        public string ThumbSizeType;
+
         public bool IsPhoto { get { return Kind == MediaKind.Photo; } }
 
         /// <summary>Duration as m:ss, the way every other client shows it.</summary>
@@ -160,6 +169,11 @@ namespace Lumigram.Mtproto
                 FileSize = document.Has("size") ? document.Long("size") : 0,
             };
 
+            // Videos and many documents carry a small picture alongside the file.
+            // It is addressed the same way, so keeping its size name is all that is
+            // needed to fetch it later.
+            if (document.Has("thumbs")) info.ThumbSizeType = BestThumb(document.Vec("thumbs"));
+
             foreach (object o in document.Vec("attributes"))
             {
                 var a = (TlObject)o;
@@ -220,6 +234,38 @@ namespace Lumigram.Mtproto
         /// bandwidth and memory, so this takes the largest that is still modest, and
         /// keeps any stripped thumbnail as an instant placeholder.
         /// </summary>
+        /// <summary>
+        /// Picks which thumbnail to ask for.
+        ///
+        /// The smallest real size, not the largest: this is drawn at the size of a
+        /// message bubble, and a bigger one costs download time for pixels nobody
+        /// sees. Stripped sizes are skipped - they carry bytes rather than a name,
+        /// and cannot be requested.
+        /// </summary>
+        private static string BestThumb(List<object> thumbs)
+        {
+            string best = null;
+            int bestArea = int.MaxValue;
+
+            foreach (object o in thumbs)
+            {
+                var size = (TlObject)o;
+
+                if (size.Ctor != TlConstructors.PhotoSize &&
+                    size.Ctor != TlConstructors.PhotoSizeProgressive) continue;
+
+                if (!size.Has("type")) continue;
+
+                int area = size.IntOr("w", 0) * size.IntOr("h", 0);
+                if (area <= 0 || area >= bestArea) continue;
+
+                bestArea = area;
+                best = size.Str("type");
+            }
+
+            return best;
+        }
+
         private static void ChooseSize(List<object> sizes, MediaInfo info)
         {
             const int preferredMaxDimension = 800;
