@@ -156,6 +156,9 @@ namespace LumigramPlus.App
 
         private List<ChatFolder> _folders = new List<ChatFolder>();
 
+        private bool _hasMore;
+        private bool _loadingMore;
+
         private const int MainList = -1;
         private int _selectedFolder = MainList;
         private bool _archiveLoaded;
@@ -396,6 +399,76 @@ namespace LumigramPlus.App
             {
                 if (!Shows(item, now)) continue;
                 _dialogs.Add(item);
+            }
+
+            // Paging belongs to the main list. A folder shows what is loaded, and
+            // the archive is fetched whole when it is opened.
+            LoadMoreButton.Visibility = _hasMore && _selectedFolder == MainList
+                ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        /// <summary>
+        /// Appends the next page of chats.
+        ///
+        /// Continues from the last entry rather than asking for a longer list, so
+        /// what is already loaded is not fetched and rebuilt a second time. The
+        /// continuation point needs the date, the top message id and the peer
+        /// together: chats are ordered by the time of their last message, and
+        /// several can share one.
+        /// </summary>
+        private async void LoadMore_Click(object sender, RoutedEventArgs e)
+        {
+            if (_loadingMore || _dialogs.Count == 0) return;
+
+            _loadingMore = true;
+            LoadMoreButton.IsEnabled = false;
+            SetBusy(true, "Loading more chats...");
+
+            try
+            {
+                DialogItem last = _dialogs[_dialogs.Count - 1];
+
+                MtprotoClient client = await TelegramService.ConnectAsync();
+
+                Messages.DialogPage page = await Messages.GetDialogPageAsync(
+                    client,
+                    PageSize,
+                    last.Entry != null ? last.Entry.TopMessageDate : 0,
+                    last.Entry != null ? last.Entry.TopMessageId : 0,
+                    Messages.InputPeerFor(last.Kind, last.PeerId, last.AccessHash),
+                    TelegramService.Info);
+
+                int now = Now();
+                int added = 0;
+
+                foreach (DialogEntry d in page.Entries)
+                {
+                    // The entry the offset was taken from comes back as the first of
+                    // the next page.
+                    if (Find(d.PeerId) != null) continue;
+
+                    _all.Add(ItemFor(d, now));
+                    added++;
+                }
+
+                // A page that adds nothing new is the end, whatever the server says.
+                _hasMore = page.HasMore && added > 0;
+
+                ApplyFolder();
+                SetBusy(false, added == 0 ? "No more chats." : "");
+
+                if (added > 0) FetchAvatars(client);
+            }
+            catch (Exception ex)
+            {
+                var rpc = ex as RpcException;
+                SetBusy(false, "Could not load more: " +
+                               (rpc != null ? rpc.ErrorType : ex.Message));
+            }
+            finally
+            {
+                _loadingMore = false;
+                LoadMoreButton.IsEnabled = true;
             }
         }
 
@@ -666,6 +739,8 @@ namespace LumigramPlus.App
                 Messages.DialogPage page = await Messages.GetDialogPageAsync(
                     client, PageSize, 0, 0, null, TelegramService.Info);
 
+                _hasMore = page.HasMore;
+
                 int now = (int)(DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0,
                                                                DateTimeKind.Utc)).TotalSeconds;
 
@@ -721,6 +796,14 @@ namespace LumigramPlus.App
                 {
                     // A picture that will not come is not worth reporting.
                 }
+            }
+
+            // Said once, at the end, rather than per chat. A whole kind of avatar
+            // failing is worth knowing about; forty identical complaints are not.
+            if (!string.IsNullOrEmpty(AvatarCache.LastError))
+            {
+                SetBusy(false, "some pictures unavailable - " + AvatarCache.LastError);
+                AvatarCache.LastError = null;
             }
         }
 

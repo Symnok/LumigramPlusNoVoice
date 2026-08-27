@@ -33,6 +33,16 @@ namespace LumigramPlus.App
             new Dictionary<long, BitmapImage>();
 
         /// <summary>
+        /// Why the last picture failed, if one did.
+        ///
+        /// Avatars fail quietly by design - a chat list without pictures is far
+        /// better than one that will not load - but quiet is also why a whole class
+        /// of them going missing is invisible. This keeps the reason so it can be
+        /// asked for once, rather than guessed at.
+        /// </summary>
+        public static string LastError;
+
+        /// <summary>
         /// The picture for a chat, downloading it if this is the first time.
         /// Null when there is nothing to show.
         /// </summary>
@@ -99,8 +109,12 @@ namespace LumigramPlus.App
                 lock (Loaded) Loaded[chat.PhotoId] = image;
                 return image;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                var rpc = ex as RpcException;
+                LastError = (chat.Kind ?? "?") + ": " +
+                            (rpc != null ? rpc.ErrorType : ex.Message);
+
                 lock (Missing) Missing.Add(chat.PhotoId);
                 return null;
             }

@@ -10,6 +10,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <StackPanel Grid.Row="0" Margin="0,0,0,8">
@@ -95,7 +96,14 @@
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
+        <!-- Shown only while the server says there are more. Separate from refresh
+             on purpose: refresh means "read the list again from the top", which is
+             what puts the unread counts right, and appending would fight that. -->
+        <Button x:Name="LoadMoreButton" Grid.Row="4" Content="load more chats"
+                Click="LoadMore_Click" Visibility="Collapsed"
+                HorizontalAlignment="Stretch" Margin="0,8,0,8"/>
     </Grid>
+
     <Page.BottomAppBar>
         <CommandBar>
             <AppBarButton Icon="Refresh" Label="refresh" Click="Refresh_Click"/>
