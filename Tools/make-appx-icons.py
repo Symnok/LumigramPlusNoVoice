@@ -141,6 +141,7 @@ def badge(mask, box):
     return np.concatenate([white, alpha[:, :, None]], axis=2)
 
 
+
 def main():
     source, background, mask, box = load()
 

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Package xmlns="http://schemas.microsoft.com/appx/2010/manifest" xmlns:m2="http://schemas.microsoft.com/appx/2013/manifest" xmlns:m3="http://schemas.microsoft.com/appx/2014/manifest" xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest">
-  <Identity Name="8f2b1c40-lumigramplus-0002" Publisher="CN=Lumigram" Version="1.0.3.0" />
+  <Identity Name="8f2b1c40-lumigramplus-0002" Publisher="CN=Lumigram" Version="1.0.6.0" />
   <mp:PhoneIdentity PhoneProductId="7B1C9D42-6E30-4A85-B2F9-1D40C8E5A736" PhonePublisherId="B1D9E4F0-2C7A-4E58-9F31-6A8D0C5B2E14" />
   <Properties>
     <DisplayName>Lumigram+ (WinRT)</DisplayName>
@@ -16,7 +16,15 @@
   </Resources>
   <Applications>
     <Application Id="App" Executable="$targetnametoken$.exe" EntryPoint="LumigramPlus.App.App">
-      <m3:VisualElements DisplayName="Lumigram+" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" Description="Telegram client for Windows Phone 8.1" ForegroundText="light" BackgroundColor="#464646" ToastCapable="true">
+      <m3:VisualElements DisplayName="Lumigram+" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" Description="Telegram client for Windows Phone 8.1" ForegroundText="light" BackgroundColor="#0F7BC4" ToastCapable="true">
+        <!--
+          The brand blue, sampled from Art/logo.jpg rather than eyeballed.
+
+          This is not only the app-list colour. A tile notification with a text
+          template replaces the logo image entirely and draws on this, so while
+          the tile was showing waiting chats it was grey - the one time anybody
+          actually looks at it.
+        -->
         <m3:DefaultTile Square71x71Logo="Assets\Square71x71Logo.png" Wide310x150Logo="Assets\Wide310x150Logo.png">
           <!-- Without this the tile is an unlabelled square. The small 71x71 tile
                has no room for a name and is not listed here. -->
@@ -28,10 +36,10 @@
         <!--
           The lock screen badge.
 
-          Notification="badge" is the count on its own, which is what this app has
-          to say: how many chats are waiting. badgeAndTileText would put a line of
-          text there too, and a message preview on a locked phone is the sort of
-          thing to be asked for rather than assumed.
+          badgeAndTileText rather than badge: badge alone offers the count for
+          the quick status row, but only an app declaring tile text is offered in
+          the detailed status slot at all. What it shows there is the wide tile's
+          text - the waiting chats by name, not what they said.
 
           The image is a silhouette, not a picture - the lock screen keeps its alpha
           channel and draws the shape in the user's accent colour.
@@ -40,7 +48,7 @@
           Settings, lock screen, choose apps to show quick status. Nothing appears
           until they do.
         -->
-        <m3:LockScreen Notification="badge" BadgeLogo="Assets\BadgeLogo.png" />
+        <m3:LockScreen Notification="badgeAndTileText" BadgeLogo="Assets\BadgeLogo.png" />
         <m3:SplashScreen Image="Assets\SplashScreen.png" />
       </m3:VisualElements>
       <!--
