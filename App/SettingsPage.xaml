@@ -28,6 +28,10 @@
             <TextBlock Text="Announces messages while the app is open. Muted chats never notify, and neither does the chat you are reading."
                        TextWrapping="Wrap" Opacity="0.7" FontSize="13" Margin="0,4,0,0"/>
 
+            <ToggleSwitch x:Name="SoundSwitch" Header="Notification sound"
+                          OnContent="on" OffContent="off"
+                          Toggled="Sound_Toggled" Margin="0,16,0,0"/>
+
             <TextBlock x:Name="ToastText" Text="" TextWrapping="Wrap" Opacity="0.7"
                        FontSize="13" Margin="0,4,0,0"/>
 

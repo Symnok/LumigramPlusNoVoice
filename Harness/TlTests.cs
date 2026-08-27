@@ -44,6 +44,73 @@ namespace Lumigram.Harness
                 Eq("consumed", 0, r.Remaining);
             }
 
+            Section("sendMessage and forwardMessages");
+            {
+                byte[] peer = Messages.InputPeerFor("user", 1234567, 0x1122334455667788L);
+                byte[] other = Messages.InputPeerFor("channel", 998877, 0x0102030405060708L);
+
+                // A plain send: flags clear, and nothing between the peer and the
+                // text. A stray reply_to here would be read as the message body.
+                {
+                    var r = new TlReader(Messages.SendTextBody(peer, "hello", 42L, 0));
+
+                    Eq("send ctor", TlConstructors.MessagesSendMessage, r.ReadConstructor());
+                    Eq("send flags", 0, r.ReadInt());
+                    Eq("send peer", TlConstructors.InputPeerUser, r.ReadConstructor());
+                    r.ReadLong(); r.ReadLong();
+                    Eq("send text", "hello", r.ReadString());
+                    Eq("send random", 42L, r.ReadLong());
+                    Eq("send consumed", 0, r.Remaining);
+                }
+
+                // A reply: flags.0 set, and a boxed InputReplyTo before the text.
+                // The message id is the second field of that box, after its own
+                // flags - written first, the server sees a reply to message 0.
+                {
+                    var r = new TlReader(Messages.SendTextBody(peer, "hi", 7L, 91011));
+
+                    Eq("reply ctor", TlConstructors.MessagesSendMessage, r.ReadConstructor());
+                    Eq("reply flags", 1, r.ReadInt());
+                    Eq("reply peer", TlConstructors.InputPeerUser, r.ReadConstructor());
+                    r.ReadLong(); r.ReadLong();
+                    Eq("reply box", TlConstructors.InputReplyToMessage, r.ReadConstructor());
+                    Eq("reply box flags", 0, r.ReadInt());
+                    Eq("reply to id", 91011, r.ReadInt());
+                    Eq("reply text", "hi", r.ReadString());
+                    Eq("reply random", 7L, r.ReadLong());
+                    Eq("reply consumed", 0, r.Remaining);
+                }
+
+                // Forwarding: two vectors of the same length, ids then random ids,
+                // and the destination last. Swapping the peers sends the copy back
+                // where it came from.
+                {
+                    var ids = new int[] { 5, 6, 7 };
+                    var randoms = new long[] { 100L, 200L, 300L };
+
+                    var r = new TlReader(Messages.ForwardBody(peer, ids, randoms, other));
+
+                    Eq("fwd ctor", TlConstructors.MessagesForwardMessages, r.ReadConstructor());
+                    Eq("fwd flags", 0, r.ReadInt());
+                    Eq("fwd from", TlConstructors.InputPeerUser, r.ReadConstructor());
+                    r.ReadLong(); r.ReadLong();
+
+                    Eq("fwd ids vector", TlConstructors.Vector, r.ReadConstructor());
+                    Eq("fwd id count", 3, r.ReadInt());
+                    for (int i = 0; i < ids.Length; i++)
+                        Eq("fwd id " + i, ids[i], r.ReadInt());
+
+                    Eq("fwd random vector", TlConstructors.Vector, r.ReadConstructor());
+                    Eq("fwd random count", 3, r.ReadInt());
+                    for (int i = 0; i < randoms.Length; i++)
+                        Eq("fwd random " + i, randoms[i], r.ReadLong());
+
+                    Eq("fwd to", TlConstructors.InputPeerChannel, r.ReadConstructor());
+                    r.ReadLong(); r.ReadLong();
+                    Eq("fwd consumed", 0, r.Remaining);
+                }
+            }
+
             Section("byte strings and padding");
             {
                 // Lengths around every boundary that changes the encoding.

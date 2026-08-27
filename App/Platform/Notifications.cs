@@ -200,10 +200,21 @@ namespace LumigramPlus.App
                 lines[0].AppendChild(xml.CreateTextNode(title));
                 lines[1].AppendChild(xml.CreateTextNode(body));
 
+                var root = (XmlElement)xml.SelectSingleNode("/toast");
+
                 // Tapping the toast has to lead somewhere, and by the time it is
                 // tapped the list it came from is long gone - so the chat travels
                 // with the notification.
-                ((XmlElement)xml.SelectSingleNode("/toast")).SetAttribute("launch", launch);
+                root.SetAttribute("launch", launch);
+
+                // Silence is an element rather than the absence of one: a toast with
+                // no audio node plays the default sound.
+                if (!AppSettings.NotificationSound)
+                {
+                    XmlElement audio = xml.CreateElement("audio");
+                    audio.SetAttribute("silent", "true");
+                    root.AppendChild(audio);
+                }
 
                 ToastNotifier notifier = ToastNotificationManager.CreateToastNotifier();
 

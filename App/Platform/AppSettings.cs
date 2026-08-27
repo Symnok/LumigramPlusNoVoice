@@ -18,6 +18,7 @@ namespace LumigramPlus.App
     {
         private const string AutoLoadPhotosKey = "autoLoadPhotos";
         private const string NotificationsKey = "notifications";
+        private const string NotificationSoundKey = "notificationSound";
 
         /// <summary>
         /// Whether pictures are fetched as soon as they appear.
@@ -45,6 +46,19 @@ namespace LumigramPlus.App
         {
             get { return Read(NotificationsKey, true); }
             set { Write(NotificationsKey, value); }
+        }
+
+        /// <summary>
+        /// Whether a notification makes a sound.
+        ///
+        /// Off by default, unlike the notifications themselves. A messenger that
+        /// stays quiet until asked is a reasonable thing to install; one that starts
+        /// making noise the moment it is signed in is not.
+        /// </summary>
+        public static bool NotificationSound
+        {
+            get { return Read(NotificationSoundKey, false); }
+            set { Write(NotificationSoundKey, value); }
         }
 
         private static bool Read(string key, bool fallback)

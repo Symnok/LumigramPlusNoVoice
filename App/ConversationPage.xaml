@@ -40,17 +40,34 @@
                           picture. Attached to the picture it existed only for
                           photos, which left every document with no way to reach
                           "save as" at all.
+
+                          Saving is last and only shown for attachments. It used to
+                          be the whole menu, so a long press on plain text offered
+                          "save as" - an action with nothing to save.
                         -->
                         <Border Margin="{Binding Margin}" CornerRadius="6" Padding="10,6,10,6"
                                 Background="{Binding Background}"
                                 HorizontalAlignment="{Binding Align}"
-                                Holding="Media_Holding">
+                                Holding="Message_Holding">
                             <FlyoutBase.AttachedFlyout>
                                 <MenuFlyout>
+                                    <MenuFlyoutItem Text="reply"
+                                                    Visibility="{Binding ActionVisibility}"
+                                                    Click="ReplyMenu_Click"/>
+                                    <MenuFlyoutItem Text="forward..."
+                                                    Visibility="{Binding ActionVisibility}"
+                                                    Click="ForwardMenu_Click"/>
+                                    <MenuFlyoutItem Text="delete"
+                                                    Visibility="{Binding ActionVisibility}"
+                                                    Click="DeleteMenu_Click"/>
+                                    <MenuFlyoutItem Text="delete for everyone"
+                                                    Visibility="{Binding RevokeVisibility}"
+                                                    Click="DeleteAllMenu_Click"/>
                                     <MenuFlyoutItem Text="save to gallery"
                                                     Visibility="{Binding GalleryVisibility}"
                                                     Click="SaveMenu_Click"/>
                                     <MenuFlyoutItem Text="save as..."
+                                                    Visibility="{Binding SaveVisibility}"
                                                     Click="SaveAsMenu_Click"/>
                                 </MenuFlyout>
                             </FlyoutBase.AttachedFlyout>
@@ -102,8 +119,65 @@
             </ListView.ItemTemplate>
         </ListView>
 
-        <TextBox x:Name="ComposeBox" Grid.Row="3" TextWrapping="NoWrap" Margin="0,8,0,0"
-                 KeyDown="Compose_KeyDown" PlaceholderText="message"/>
+        <StackPanel Grid.Row="3">
+            <!-- Standing above the box rather than in it: a reply that is not
+                 visible is a reply the user forgets is armed, and the next message
+                 goes somewhere they did not intend. -->
+            <Border x:Name="ReplyBar" Visibility="Collapsed" Margin="0,8,0,0"
+                    Padding="8,4,4,4" Background="{ThemeResource PhoneChromeBrush}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                        <TextBlock Text="replying to" FontSize="11" Opacity="0.6"/>
+                        <TextBlock x:Name="ReplyText" TextWrapping="NoWrap"
+                                   TextTrimming="CharacterEllipsis" FontSize="13"/>
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="&#xE711;" FontFamily="Segoe MDL2 Assets"
+                            FontSize="14" Padding="8,2,8,2" MinWidth="0"
+                            BorderThickness="0" Click="CancelReply_Click"/>
+                </Grid>
+            </Border>
+
+            <TextBox x:Name="ComposeBox" TextWrapping="NoWrap" Margin="0,8,0,0"
+                     KeyDown="Compose_KeyDown" PlaceholderText="message"/>
+        </StackPanel>
+        <!--
+          Picking a chat to forward to.
+
+          A full page would mean leaving the conversation and finding the way back
+          to it; this is one decision, so it is taken in place and dismissed either
+          way. Spanning every row so nothing behind it can be tapped by accident.
+        -->
+        <Border x:Name="ForwardPanel" Grid.RowSpan="4" Visibility="Collapsed"
+                Background="{ThemeResource PhoneBackgroundBrush}">
+            <Grid Margin="12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Text="forward to" FontSize="20" Margin="0,0,0,8"/>
+
+                <ListView Grid.Row="1" x:Name="ForwardList" IsItemClickEnabled="True"
+                          SelectionMode="None" ItemClick="ForwardTarget_Click">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Title}" TextWrapping="NoWrap"
+                                       TextTrimming="CharacterEllipsis"
+                                       Margin="0,10,0,10"/>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+
+                <Button Grid.Row="2" Content="cancel" HorizontalAlignment="Stretch"
+                        Margin="0,8,0,0" Click="CancelForward_Click"/>
+            </Grid>
+        </Border>
+
         <!--
           The in-app banner.
 

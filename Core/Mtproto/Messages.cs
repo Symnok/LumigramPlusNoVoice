@@ -210,21 +210,97 @@ namespace Lumigram.Mtproto
             return 0;
         }
 
-        /// <summary>Sends text, returning the id the server assigned it.</summary>
+        /// <summary>
+        /// Sends text, returning the id the server assigned it.
+        ///
+        /// A reply is the same send with one extra field. reply_to is a boxed
+        /// InputReplyTo rather than a bare message id - the type carries quoting and
+        /// cross-chat replies that this client does not use, but the wire format has
+        /// to be written whole regardless.
+        /// </summary>
         public static async Task<int> SendTextAsync(MtprotoClient client, ICrypto crypto,
-                                                    byte[] inputPeer, string text)
+                                                    byte[] inputPeer, string text,
+                                                    int replyToMsgId = 0)
         {
             long randomId = BitConverter.ToInt64(crypto.Random(8), 0);
 
+            TlReader r = await client.InvokeAsync(
+                SendTextBody(inputPeer, text, randomId, replyToMsgId));
+
+            return SentMessageId(TlSchema.ReadObject(r));
+        }
+
+        /// <summary>
+        /// The messages.sendMessage payload, separated so it can be checked without
+        /// a connection. The reply field is the part worth checking: a boxed
+        /// InputReplyTo written at the wrong offset is accepted by the writer and
+        /// rejected only by the server.
+        /// </summary>
+        public static byte[] SendTextBody(byte[] inputPeer, string text, long randomId,
+                                          int replyToMsgId)
+        {
             var q = new TlWriter(text.Length + 64);
             q.WriteConstructor(TlConstructors.MessagesSendMessage)
-             .WriteInt(0)                      // flags: no reply, entities, or media
-             .WriteRaw(inputPeer)
-             .WriteString(text)
+             .WriteInt(replyToMsgId != 0 ? 1 : 0)   // flags.0: reply_to
+             .WriteRaw(inputPeer);
+
+            if (replyToMsgId != 0)
+            {
+                q.WriteConstructor(TlConstructors.InputReplyToMessage)
+                 .WriteInt(0)                       // no top_msg_id, peer, or quote
+                 .WriteInt(replyToMsgId);
+            }
+
+            q.WriteString(text)
              .WriteLong(randomId);
 
-            TlReader r = await client.InvokeAsync(q.ToArray());
-            return SentMessageId(TlSchema.ReadObject(r));
+            return q.ToArray();
+        }
+
+        /// <summary>
+        /// Copies messages into another chat.
+        ///
+        /// One random id per message: the server uses them to collapse a retried
+        /// send, so sharing one across a batch would forward a single message.
+        /// </summary>
+        public static async Task ForwardMessagesAsync(MtprotoClient client, ICrypto crypto,
+                                                      byte[] fromPeer, IList<int> ids,
+                                                      byte[] toPeer, ClientInfo info = null)
+        {
+            if (ids == null || ids.Count == 0) return;
+
+            var randomIds = new long[ids.Count];
+            for (int i = 0; i < ids.Count; i++)
+                randomIds[i] = BitConverter.ToInt64(crypto.Random(8), 0);
+
+            TlReader r = await client.InvokeAsync(
+                ForwardBody(fromPeer, ids, randomIds, toPeer), info);
+
+            TlSchema.ReadObject(r);            // Updates
+        }
+
+        /// <summary>
+        /// The messages.forwardMessages payload. Separated for the same reason as
+        /// the send: two vectors that have to be the same length and in the same
+        /// order is exactly the kind of thing that is wrong once and never noticed.
+        /// </summary>
+        public static byte[] ForwardBody(byte[] fromPeer, IList<int> ids,
+                                         IList<long> randomIds, byte[] toPeer)
+        {
+            var q = new TlWriter(64 + ids.Count * 12);
+            q.WriteConstructor(TlConstructors.MessagesForwardMessages)
+             .WriteInt(0)                       // no silent, no drop_author
+             .WriteRaw(fromPeer);
+
+            q.WriteConstructor(TlConstructors.Vector).WriteInt(ids.Count);
+            foreach (int id in ids) q.WriteInt(id);
+
+            q.WriteConstructor(TlConstructors.Vector).WriteInt(randomIds.Count);
+            foreach (long id in randomIds) q.WriteLong(id);
+
+            q.WriteRaw(toPeer);
+
+            return q.ToArray();
         }
 
         /// <summary>

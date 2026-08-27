@@ -30,6 +30,7 @@ namespace LumigramPlus.App
             _loading = true;
             AutoLoadSwitch.IsOn = AppSettings.AutoLoadPhotos;
             NotificationsSwitch.IsOn = AppSettings.Notifications;
+            SoundSwitch.IsOn = AppSettings.NotificationSound;
 
             // Shown only when something is wrong. Toasts fail silently by design,
             // so a working app and a refused one look identical without this.
@@ -76,6 +77,13 @@ namespace LumigramPlus.App
         {
             TelegramService.Disconnect();
             Application.Current.Exit();
+        }
+
+        private void Sound_Toggled(object sender, RoutedEventArgs e)
+        {
+            if (_loading) return;
+
+            AppSettings.NotificationSound = SoundSwitch.IsOn;
         }
 
         private void Notifications_Toggled(object sender, RoutedEventArgs e)

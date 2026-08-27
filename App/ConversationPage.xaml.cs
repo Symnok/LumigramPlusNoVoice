@@ -121,6 +121,35 @@ namespace LumigramPlus.App
             }
         }
 
+        /// <summary>
+        /// Whether this message can be acted on at all.
+        ///
+        /// A bubble put on screen before the server answered has no id yet, and
+        /// every one of these actions names the message by its id. Offering them
+        /// would be offering something that cannot be carried out.
+        /// </summary>
+        public Visibility ActionVisibility
+        {
+            get { return Id != 0 ? Visibility.Visible : Visibility.Collapsed; }
+        }
+
+        /// <summary>Same, for the one action that reaches the other side too.</summary>
+        public Visibility RevokeVisibility
+        {
+            get { return ActionVisibility; }
+        }
+
+        /// <summary>
+        /// Whether there is a file behind this message.
+        ///
+        /// Plain text used to offer "save as", which was the whole menu at the time
+        /// - a long press on a sentence proposed writing it to a file.
+        /// </summary>
+        public Visibility SaveVisibility
+        {
+            get { return Media != null ? Visibility.Visible : Visibility.Collapsed; }
+        }
+
         /// <summary>Guards against a second fetch while one is already running.</summary>
         public bool Loading { get; set; }
 
@@ -778,13 +807,13 @@ namespace LumigramPlus.App
         }
 
         /// <summary>
-        /// Opens the save menu on a press and hold.
+        /// Opens the message menu on a press and hold.
         ///
         /// An attached flyout does not show itself - something has to ask - and the
         /// Started phase is the moment to do it: waiting for Completed means the
         /// menu appears only after the finger lifts.
         /// </summary>
-        private void Media_Holding(object sender, Windows.UI.Xaml.Input.HoldingRoutedEventArgs e)
+        private void Message_Holding(object sender, Windows.UI.Xaml.Input.HoldingRoutedEventArgs e)
         {
             if (e.HoldingState != Windows.UI.Input.HoldingState.Started) return;
 
@@ -831,6 +860,168 @@ namespace LumigramPlus.App
             }
 
             Frame.Navigate(typeof(ImageViewerPage), file.Name);
+        }
+
+        /// <summary>The message the next send will answer, or 0 for none.</summary>
+        private int _replyTo;
+
+        private void ReplyMenu_Click(object sender, RoutedEventArgs e)
+        {
+            MessageItem item = MenuItem(sender);
+            if (item == null) return;
+
+            _replyTo = item.Id;
+
+            // The bubble may be an attachment with no words in it, in which case the
+            // note is the only description of it there is.
+            string summary = !string.IsNullOrEmpty(item.Text) ? item.Text
+                           : !string.IsNullOrEmpty(item.MediaNote) ? item.MediaNote
+                           : "message";
+
+            ReplyText.Text = summary;
+            ReplyBar.Visibility = Visibility.Visible;
+
+            ComposeBox.Focus(FocusState.Programmatic);
+        }
+
+        private void CancelReply_Click(object sender, RoutedEventArgs e)
+        {
+            ClearReply();
+        }
+
+        private void ClearReply()
+        {
+            _replyTo = 0;
+            ReplyBar.Visibility = Visibility.Collapsed;
+        }
+
+        private async void DeleteMenu_Click(object sender, RoutedEventArgs e)
+        {
+            await DeleteAsync(MenuItem(sender), false);
+        }
+
+        private async void DeleteAllMenu_Click(object sender, RoutedEventArgs e)
+        {
+            await DeleteAsync(MenuItem(sender), true);
+        }
+
+        /// <summary>
+        /// Removes a message here and, when asked, everywhere.
+        ///
+        /// The bubble goes only after the server agrees. "Delete for everyone" is
+        /// refused for messages that are too old or were sent by someone else, and a
+        /// message that vanished locally but not remotely would come back on the
+        /// next refresh with no explanation.
+        /// </summary>
+        private async Task DeleteAsync(MessageItem item, bool revoke)
+        {
+            if (item == null || item.Id == 0) return;
+
+            try
+            {
+                MtprotoClient client = await TelegramService.ConnectAsync();
+
+                await Messages.DeleteMessagesAsync(
+                    client, _peer.Kind, _peer.PeerId, _peer.AccessHash,
+                    new List<int> { item.Id }, revoke, TelegramService.Info);
+
+                _messages.Remove(item);
+
+                // A reply aimed at a message that no longer exists would be refused
+                // by the server, so it is dropped with it.
+                if (_replyTo == item.Id) ClearReply();
+
+                SetBusy(false, revoke ? "Deleted for everyone." : "Deleted.");
+            }
+            catch (Exception ex)
+            {
+                var rpc = ex as RpcException;
+                SetBusy(false, "Could not delete: " +
+                               (rpc != null ? rpc.ErrorType : ex.Message));
+            }
+        }
+
+        /// <summary>The message a menu item belongs to.</summary>
+        private static MessageItem MenuItem(object sender)
+        {
+            var element = sender as FrameworkElement;
+            return element == null ? null : element.DataContext as MessageItem;
+        }
+
+        // ---- forwarding ------------------------------------------------------
+
+        /// <summary>The message waiting for a destination.</summary>
+        private MessageItem _forwarding;
+
+        private async void ForwardMenu_Click(object sender, RoutedEventArgs e)
+        {
+            MessageItem item = MenuItem(sender);
+            if (item == null || item.Id == 0) return;
+
+            _forwarding = item;
+
+            ForwardList.ItemsSource = null;
+            ForwardPanel.Visibility = Visibility.Visible;
+
+            try
+            {
+                MtprotoClient client = await TelegramService.ConnectAsync();
+
+                // The recent chats, which is what a forward is nearly always aimed
+                // at. A full searchable list is a larger feature than this menu.
+                Messages.DialogPage page = await Messages.GetDialogPageAsync(
+                    client, 40, 0, 0, null, TelegramService.Info);
+
+                ForwardList.ItemsSource = page.Entries;
+            }
+            catch (Exception ex)
+            {
+                var rpc = ex as RpcException;
+                SetBusy(false, "Could not list chats: " +
+                               (rpc != null ? rpc.ErrorType : ex.Message));
+
+                CloseForward();
+            }
+        }
+
+        private void CancelForward_Click(object sender, RoutedEventArgs e)
+        {
+            CloseForward();
+        }
+
+        private void CloseForward()
+        {
+            _forwarding = null;
+            ForwardPanel.Visibility = Visibility.Collapsed;
+            ForwardList.ItemsSource = null;
+        }
+
+        private async void ForwardTarget_Click(object sender, ItemClickEventArgs e)
+        {
+            var target = e.ClickedItem as DialogEntry;
+            MessageItem item = _forwarding;
+
+            CloseForward();
+
+            if (target == null || item == null) return;
+
+            try
+            {
+                MtprotoClient client = await TelegramService.ConnectAsync();
+
+                await Messages.ForwardMessagesAsync(
+                    client, TelegramService.Crypto, _inputPeer,
+                    new List<int> { item.Id },
+                    Messages.InputPeerFor(target), TelegramService.Info);
+
+                SetBusy(false, "Forwarded to " + (target.Title ?? "chat") + ".");
+            }
+            catch (Exception ex)
+            {
+                var rpc = ex as RpcException;
+                SetBusy(false, "Could not forward: " +
+                               (rpc != null ? rpc.ErrorType : ex.Message));
+            }
         }
 
         private void SaveMenu_Click(object sender, RoutedEventArgs e)
@@ -1110,6 +1301,11 @@ namespace LumigramPlus.App
 
             _sending = true;
 
+            // Taken before the bar is cleared, so a failure below does not leave the
+            // next message answering something the user has moved on from.
+            int replyTo = _replyTo;
+            ClearReply();
+
             ComposeBox.Text = "";
             SendButton.IsEnabled = false;
 
@@ -1135,7 +1331,7 @@ namespace LumigramPlus.App
                 // message comes back from the server there is nothing to recognise
                 // it by and it is added a second time.
                 pending.Id = await Messages.SendTextAsync(
-                    client, TelegramService.Crypto, _inputPeer, text);
+                    client, TelegramService.Crypto, _inputPeer, text, replyTo);
 
                 SetBusy(false, "");
             }

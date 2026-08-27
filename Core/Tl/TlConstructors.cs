@@ -176,6 +176,14 @@ namespace Lumigram.Tl
         //   reply_to:flags.0?InputReplyTo message:string random_id:long ...
         public const uint MessagesSendMessage = 0xfef48f62;
 
+        // inputReplyToMessage#3bd4b7c2 flags:# reply_to_msg_id:int
+        //   top_msg_id:flags.0?int reply_to_peer_id:flags.1?InputPeer ...
+        public const uint InputReplyToMessage = 0x3bd4b7c2;
+
+        // messages.forwardMessages#13704a7c flags:# ... from_peer:InputPeer
+        //   id:Vector<int> random_id:Vector<long> to_peer:InputPeer ...
+        public const uint MessagesForwardMessages = 0x13704a7c;
+
         // messages.getDialogs#a0f4cb4f flags:# exclude_pinned:flags.0?true
         //   folder_id:flags.1?int offset_date:int offset_id:int
         //   offset_peer:InputPeer limit:int hash:long
