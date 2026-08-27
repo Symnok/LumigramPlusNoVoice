@@ -168,6 +168,9 @@
     <Compile Include="Platform\AppSettings.cs" />
     <Compile Include="Platform\LiveTile.cs" />
     <Compile Include="Platform\Notifications.cs" />
+    <Compile Include="Platform\BackgroundNotifications.cs" />
+    <Compile Include="Platform\SeenStore.cs" />
+    <Compile Include="Platform\BackgroundLog.cs" />
     <Compile Include="Platform\Continuation.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
@@ -192,6 +195,10 @@
     <Content Include="Assets\SplashScreen.scale-240.png" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Tasks\LumigramPlus.Tasks.csproj">
+      <Project>{9C4D2E71-5A83-4F16-B0D7-3E82A19C6F45}</Project>
+      <Name>LumigramPlus.Tasks</Name>
+    </ProjectReference>
     <ProjectReference Include="..\Core\LumigramPlus.Core.csproj">
       <Project>{E3F1A7C2-4B69-4D85-A0F3-27C6B9E48D51}</Project>
       <Name>LumigramPlus.Core</Name>

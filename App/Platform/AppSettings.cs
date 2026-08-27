@@ -3,6 +3,16 @@ using Windows.Storage;
 
 namespace LumigramPlus.App
 {
+    /// <summary>What the app is allowed to do while it is not on screen.</summary>
+    internal enum BackgroundMode
+    {
+        /// <summary>Nothing runs. The default.</summary>
+        Off = 0,
+
+        /// <summary>A timer wakes a task to look for new messages.</summary>
+        Periodic = 1,
+    }
+
     /// <summary>
     /// What the user has chosen.
     ///
@@ -14,11 +24,12 @@ namespace LumigramPlus.App
     /// Every setting has a default that works without being asked about, and reading
     /// one that has never been written returns it.
     /// </summary>
-    public static class AppSettings
+    internal static class AppSettings
     {
         private const string AutoLoadPhotosKey = "autoLoadPhotos";
         private const string NotificationsKey = "notifications";
         private const string NotificationSoundKey = "notificationSound";
+        private const string BackgroundKey = "backgroundMode";
 
         /// <summary>
         /// Whether pictures are fetched as soon as they appear.
@@ -59,6 +70,42 @@ namespace LumigramPlus.App
         {
             get { return Read(NotificationSoundKey, false); }
             set { Write(NotificationSoundKey, value); }
+        }
+
+        /// <summary>
+        /// What the app may do while it is not on screen.
+        ///
+        /// Off by default, and deliberately so: background work costs battery on a
+        /// phone that has not had a new one in a decade, and the two modes that are
+        /// not off both need permission the user has to grant. An app that starts
+        /// taking that on its own is an app that gets uninstalled.
+        /// </summary>
+        public static BackgroundMode BackgroundMode
+        {
+            get
+            {
+                try
+                {
+                    object stored = ApplicationData.Current.LocalSettings.Values[BackgroundKey];
+                    if (!(stored is int)) return BackgroundMode.Off;
+
+                    int value = (int)stored;
+
+                    // 2 was a real-time mode that no longer exists. It always
+                    // registered the timer as well, so the intent behind it survives
+                    // as the timer rather than as off.
+                    return value == 0 ? BackgroundMode.Off : BackgroundMode.Periodic;
+                }
+                catch (Exception)
+                {
+                    return BackgroundMode.Off;
+                }
+            }
+            set
+            {
+                try { ApplicationData.Current.LocalSettings.Values[BackgroundKey] = (int)value; }
+                catch (Exception) { }
+            }
         }
 
         private static bool Read(string key, bool fallback)

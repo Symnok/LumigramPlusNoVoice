@@ -14,7 +14,7 @@ namespace Lumigram.Phone
     /// a raw TCP connection. The app manifest must declare ID_CAP_NETWORKING or the
     /// connect attempt fails at runtime rather than at build time.
     /// </summary>
-    public sealed class PhoneTransport : ITransport
+    internal sealed class PhoneTransport : ITransport
     {
         private StreamSocket _socket;
         private DataReader _reader;

@@ -15,7 +15,19 @@
             <TextBlock Text="settings" FontSize="30"/>
         </StackPanel>
 
-        <StackPanel Grid.Row="1">
+        <!--
+          The settings outgrew the screen the moment background notifications
+          arrived, and a StackPanel in a star row does not scroll - it is simply
+          given the height it asks for and the rest is off the bottom of the phone.
+
+          The margin moves onto the panel so the scrollbar sits against the edge of
+          the screen rather than sixteen pixels inside it.
+        -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                      VerticalScrollMode="Enabled" HorizontalScrollMode="Disabled"
+                      HorizontalScrollBarVisibility="Disabled"
+                      Margin="0,0,-16,-16" Padding="0,0,16,16">
+        <StackPanel>
             <ToggleSwitch x:Name="AutoLoadSwitch" Header="Download photos automatically"
                           OnContent="on" OffContent="off"
                           Toggled="AutoLoad_Toggled"/>
@@ -32,6 +44,21 @@
                           OnContent="on" OffContent="off"
                           Toggled="Sound_Toggled" Margin="0,16,0,0"/>
 
+            <TextBlock Text="Notifications in background" Margin="0,20,0,4"/>
+            <ComboBox x:Name="BackgroundBox" HorizontalAlignment="Stretch"
+                      SelectionChanged="Background_Changed">
+                <ComboBoxItem Content="off"/>
+                <ComboBoxItem Content="every 15 minutes"/>
+            </ComboBox>
+            <TextBlock x:Name="BackgroundText" Text="" TextWrapping="Wrap" Opacity="0.7"
+                       FontSize="13" Margin="0,4,0,0"/>
+
+            <Button x:Name="CheckNowButton" Content="check for messages now"
+                    HorizontalAlignment="Stretch" Margin="0,8,0,0"
+                    Click="CheckNow_Click"/>
+            <TextBlock x:Name="LastRunText" Text="" TextWrapping="Wrap" Opacity="0.7"
+                       FontSize="13" Margin="0,4,0,0"/>
+
             <TextBlock x:Name="ToastText" Text="" TextWrapping="Wrap" Opacity="0.7"
                        FontSize="13" Margin="0,4,0,0"/>
 
@@ -45,5 +72,6 @@
 
             <Button Content="exit" Click="Exit_Click" HorizontalAlignment="Stretch"/>
         </StackPanel>
+        </ScrollViewer>
     </Grid>
 </Page>

@@ -1,6 +1,7 @@
 using System;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
+using Lumigram.Mtproto;
 using Windows.UI.Xaml.Navigation;
 
 namespace LumigramPlus.App
@@ -31,6 +32,9 @@ namespace LumigramPlus.App
             AutoLoadSwitch.IsOn = AppSettings.AutoLoadPhotos;
             NotificationsSwitch.IsOn = AppSettings.Notifications;
             SoundSwitch.IsOn = AppSettings.NotificationSound;
+            BackgroundBox.SelectedIndex = (int)AppSettings.BackgroundMode;
+            DescribeBackground(null);
+            ShowLastRun();
 
             // Shown only when something is wrong. Toasts fail silently by design,
             // so a working app and a refused one look identical without this.
@@ -77,6 +81,111 @@ namespace LumigramPlus.App
         {
             TelegramService.Disconnect();
             Application.Current.Exit();
+        }
+
+        private async void Background_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_loading) return;
+
+            int index = BackgroundBox.SelectedIndex;
+
+            BackgroundMode mode = index == (int)BackgroundMode.Periodic
+                ? BackgroundMode.Periodic : BackgroundMode.Off;
+
+            AppSettings.BackgroundMode = mode;
+
+            BackgroundText.Text = "Asking the system...";
+
+            // Registration needs permission the user may refuse, and real time needs
+            // a slot the system may not have. Whatever comes back is shown rather
+            // than swallowed: the difference between "on" and "asked for and
+            // refused" is invisible otherwise.
+            string trouble = await BackgroundNotifications.ApplyAsync(mode);
+
+            DescribeBackground(trouble);
+        }
+
+        /// <summary>
+        /// What the background task last did, if it has ever run.
+        ///
+        /// The task is silent by construction - it has no screen and must fail
+        /// quietly - so without this, "the trigger never fired" and "it fired and
+        /// found nothing" are the same observation: no notification.
+        /// </summary>
+        private void ShowLastRun()
+        {
+            string last = BackgroundLog.Last;
+
+            if (!string.IsNullOrEmpty(last))
+            {
+                LastRunText.Text = "Last background check: " + last;
+                return;
+            }
+
+            LastRunText.Text = BackgroundNotifications.PeriodicRegistered
+                ? "Registered, but has not run yet."
+                : "Not registered.";
+        }
+
+        /// <summary>
+        /// Runs the same check the background task runs, here and now.
+        ///
+        /// This separates two failures that look identical from the outside: the
+        /// trigger never firing, and the work failing when it does. If this button
+        /// notifies and the background never does, the connection and the toast are
+        /// fine and the problem is the wake.
+        /// </summary>
+        private async void CheckNow_Click(object sender, RoutedEventArgs e)
+        {
+            CheckNowButton.IsEnabled = false;
+            LastRunText.Text = "Checking...";
+
+            try
+            {
+                MtprotoClient client = await TelegramService.ConnectAsync();
+
+                Messages.DialogPage page = await Messages.GetDialogPageAsync(
+                    client, 20, 0, 0, null, TelegramService.Info);
+
+                int announced = Notifications.Observe(page.Entries);
+
+                LastRunText.Text = page.Entries.Count + " chats read, " +
+                    (announced == 0
+                        ? "nothing new since the last check."
+                        : announced + " announced.");
+            }
+            catch (Exception ex)
+            {
+                var rpc = ex as RpcException;
+                LastRunText.Text = "Failed: " + (rpc != null ? rpc.ErrorType : ex.Message);
+            }
+            finally
+            {
+                CheckNowButton.IsEnabled = true;
+            }
+        }
+
+        private void DescribeBackground(string trouble)
+        {
+            if (!string.IsNullOrEmpty(trouble))
+            {
+                BackgroundText.Text = trouble;
+                return;
+            }
+
+            switch (AppSettings.BackgroundMode)
+            {
+                case BackgroundMode.Periodic:
+                    BackgroundText.Text = "Fifteen minutes is the shortest the "
+                                        + "platform allows, and it is a floor rather "
+                                        + "than a schedule - the phone decides when "
+                                        + "within it to wake.";
+                    break;
+
+                default:
+                    BackgroundText.Text = "Messages are only noticed while the app is open.";
+                    break;
+            }
         }
 
         private void Sound_Toggled(object sender, RoutedEventArgs e)

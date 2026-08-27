@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using Windows.Data.Xml.Dom;
 using Windows.UI.Notifications;
-using Windows.UI.Xaml;
 using Lumigram.Mtproto;
 
 namespace LumigramPlus.App
@@ -25,7 +24,7 @@ namespace LumigramPlus.App
     /// moves for reasons that are not new messages - reading elsewhere, a chat being
     /// cleared - and each of those would announce something that did not arrive.
     /// </summary>
-    public static class Notifications
+    internal static class Notifications
     {
         /// <summary>The chat on screen, or 0 when none is open.</summary>
         public static long OpenPeerId;
@@ -62,13 +61,6 @@ namespace LumigramPlus.App
         public static event Action<string, string, DialogEntry> Banner;
 
         /// <summary>
-        /// The newest message seen in each chat.
-        ///
-        /// The first look only records; announcing everything already waiting the
-        /// moment the app opens would be a wall of toasts for messages the user has
-        /// had for hours.
-        /// </summary>
-        /// <summary>
         /// Why toasts are not appearing, or null when they should be.
         ///
         /// A refused toast raises nothing - Show() returns and the notification is
@@ -93,16 +85,15 @@ namespace LumigramPlus.App
             }
         }
 
-        private static readonly Dictionary<long, int> Seen = new Dictionary<long, int>();
-        private static bool _baseline;
+        /// <summary>Serialises the read-modify-write against the stored map.</summary>
+        private static readonly object Gate = new object();
 
         /// <summary>Forgets everything, so a new account does not inherit it.</summary>
         public static void Reset()
         {
-            lock (Seen)
+            lock (Gate)
             {
-                Seen.Clear();
-                _baseline = false;
+                SeenStore.Clear();
                 LiveTile.Clear();
             }
         }
@@ -114,24 +105,28 @@ namespace LumigramPlus.App
         /// separately: the chat list already reads this every few seconds, and a
         /// second poll would double the traffic to learn the same thing.
         /// </summary>
-        public static void Observe(List<DialogEntry> dialogs)
+        /// <returns>How many chats were announced.</returns>
+        public static int Observe(List<DialogEntry> dialogs)
         {
-            if (dialogs == null) return;
+            if (dialogs == null) return 0;
 
             var announce = new List<DialogEntry>();
             int now = (int)(DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0,
                                                            DateTimeKind.Utc)).TotalSeconds;
 
-            lock (Seen)
+            lock (Gate)
             {
-                bool first = !_baseline;
+                Dictionary<long, int> seen = SeenStore.Load();
+                bool first = !SeenStore.HasBaseline;
+                var order = new List<long>(dialogs.Count);
 
                 foreach (DialogEntry d in dialogs)
                 {
                     int previous;
-                    bool known = Seen.TryGetValue(d.PeerId, out previous);
+                    bool known = seen.TryGetValue(d.PeerId, out previous);
 
-                    Seen[d.PeerId] = d.TopMessageId;
+                    seen[d.PeerId] = d.TopMessageId;
+                    order.Add(d.PeerId);
 
                     if (first || !known) continue;
                     if (d.TopMessageId <= previous) continue;
@@ -144,9 +139,21 @@ namespace LumigramPlus.App
                     announce.Add(d);
                 }
 
-                _baseline = true;
+                SeenStore.Save(seen, order);
+                SeenStore.HasBaseline = true;
             }
 
+            LiveTileOrClear(dialogs, now);
+
+            if (!AppSettings.Notifications) return 0;
+
+            foreach (DialogEntry d in announce) Announce(d);
+
+            return announce.Count;
+        }
+
+        private static void LiveTileOrClear(List<DialogEntry> dialogs, int now)
+        {
             if (!AppSettings.Notifications)
             {
                 // The toggle covers the tile too. A badge is a notification that
@@ -159,8 +166,6 @@ namespace LumigramPlus.App
             // Written on every pass, not only when something arrived: the tile also
             // has to come down as chats are read.
             LiveTile.Update(dialogs, now);
-
-            foreach (DialogEntry d in announce) Announce(d);
         }
 
         private static void Announce(DialogEntry dialog)

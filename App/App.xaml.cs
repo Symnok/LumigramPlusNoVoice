@@ -141,6 +141,12 @@ namespace LumigramPlus.App
             }
 
             Window.Current.Activate();
+
+            // Registrations outlive the app, and a control channel does not survive
+            // being closed. Reapplying on every launch is what makes the setting
+            // mean the same thing after an update, a reinstall, or a swipe out of
+            // the task switcher.
+            await BackgroundNotifications.ApplyAsync(AppSettings.BackgroundMode);
         }
 
     }

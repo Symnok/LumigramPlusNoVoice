@@ -18,7 +18,7 @@ namespace Lumigram.Phone
     /// managed code instead. The same concern applies to PBKDF2, which runs 100,000
     /// HMAC iterations for two-step verification: see the remark on HmacSha512.
     /// </summary>
-    public sealed class PhoneCrypto : ICrypto
+    internal sealed class PhoneCrypto : ICrypto
     {
         private static readonly HashAlgorithmProvider Sha1Provider =
             HashAlgorithmProvider.OpenAlgorithm(HashAlgorithmNames.Sha1);

@@ -24,7 +24,7 @@ namespace LumigramPlus.App
     /// the session is revoked. It stays in the app's own data folder and is never
     /// copied anywhere else.
     /// </summary>
-    public sealed class SessionStore
+    internal sealed class SessionStore
     {
         private const string FileName = "session.dat";
         private const int Version = 1;

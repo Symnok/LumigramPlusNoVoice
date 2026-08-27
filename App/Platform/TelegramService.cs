@@ -19,7 +19,7 @@ namespace LumigramPlus.App
     /// belong with the chat list, and adding them before there is anything to show
     /// would be building machinery with nothing to drive.
     /// </summary>
-    public static class TelegramService
+    internal static class TelegramService
     {
         public static readonly ICrypto Crypto = new PhoneCrypto();
 
