@@ -69,7 +69,18 @@ namespace LumigramPlus.App
         /// </summary>
         public static async Task<MtprotoClient> ConnectAsync(Action<string> progress = null)
         {
-            lock (Gate) if (_client != null) return _client;
+            lock (Gate)
+            {
+                // A cached connection is only worth having while it works. The
+                // system closes sockets during suspension, so the one held from
+                // before the app was put away is dead - and returning it means the
+                // first thing the user does after reopening fails, rather than
+                // reconnecting.
+                if (_client != null && (_transport == null || _transport.IsConnected))
+                    return _client;
+            }
+
+            Disconnect();
 
             progress = progress ?? delegate { };
 

@@ -22,6 +22,23 @@ namespace LumigramPlus.App
             // that behaviour by default, which is why its absence here reads as the
             // app crashing on Back rather than as a missing handler.
             Windows.Phone.UI.Input.HardwareButtons.BackPressed += OnBackPressed;
+
+            // WinRT closes an app's sockets while it is suspended and hands back
+            // something that still looks connected. Letting go here means the next
+            // use builds a new connection instead of failing on the old one.
+            Suspending += OnSuspending;
+        }
+
+        private void OnSuspending(object sender,
+                                  Windows.ApplicationModel.SuspendingEventArgs e)
+        {
+            Windows.ApplicationModel.SuspendingDeferral deferral =
+                e.SuspendingOperation.GetDeferral();
+
+            try { TelegramService.Disconnect(); }
+            catch (Exception) { }
+
+            deferral.Complete();
         }
 
         private void OnBackPressed(object sender,

@@ -20,7 +20,17 @@ namespace Lumigram.Phone
         private DataReader _reader;
         private DataWriter _writer;
 
-        public bool IsConnected { get { return _socket != null; } }
+        /// <summary>
+        /// Whether this is still usable.
+        ///
+        /// Holding a socket is not the same as having a connection. The system
+        /// closes an app's sockets while it is suspended, and what comes back is an
+        /// object that still looks connected and fails on first use - so the fault
+        /// has to be remembered when it happens, not inferred afterwards.
+        /// </summary>
+        public bool IsConnected { get { return _socket != null && !_faulted; } }
+
+        private bool _faulted;
 
         public async Task ConnectAsync(string host, int port)
         {
@@ -42,9 +52,17 @@ namespace Lumigram.Phone
 
         public async Task SendAsync(byte[] data)
         {
-            _writer.WriteBytes(data);
-            await _writer.StoreAsync();
-            await _writer.FlushAsync();
+            try
+            {
+                _writer.WriteBytes(data);
+                await _writer.StoreAsync();
+                await _writer.FlushAsync();
+            }
+            catch (Exception)
+            {
+                _faulted = true;
+                throw;
+            }
         }
 
         public async Task<byte[]> ReceiveExactAsync(int count)
@@ -52,17 +70,25 @@ namespace Lumigram.Phone
             var buffer = new byte[count];
             int read = 0;
 
-            while (read < count)
+            try
             {
-                uint loaded = await _reader.LoadAsync((uint)(count - read));
-                if (loaded == 0)
-                    throw new MtprotoException("connection closed after " + read +
-                                               " of " + count + " bytes");
+                while (read < count)
+                {
+                    uint loaded = await _reader.LoadAsync((uint)(count - read));
+                    if (loaded == 0)
+                        throw new MtprotoException("connection closed after " + read +
+                                                   " of " + count + " bytes");
 
-                var chunk = new byte[loaded];
-                _reader.ReadBytes(chunk);
-                System.Buffer.BlockCopy(chunk, 0, buffer, read, (int)loaded);
-                read += (int)loaded;
+                    var chunk = new byte[loaded];
+                    _reader.ReadBytes(chunk);
+                    System.Buffer.BlockCopy(chunk, 0, buffer, read, (int)loaded);
+                    read += (int)loaded;
+                }
+            }
+            catch (Exception)
+            {
+                _faulted = true;
+                throw;
             }
 
             return buffer;
